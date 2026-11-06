@@ -1,0 +1,112 @@
+{
+ "probed": "2026-10-09",
+ "how": "For each case, a fresh page of the scratch data source got four paragraphs with replace_content (an anchor, the case's line, a middle line, a tail); one update_content then edited the tail only, and the block tree was read before and after. Fresh pages were also searched with the case's line as returned and as sent, as their first edit. Every page was trashed.",
+ "finding": "One update_content edit anywhere on a page reads every line of the page back from its markdown: a block whose markdown doesn't read back as itself (a paragraph holding a literal '# x', '- x', '+ x', '1. x', '---', or '_x_' that pairs) becomes what its markdown says. A refused edit changes nothing. replace_content with the page's own markdown does the same. Notion's search finds such a line only as returned.",
+ "cases": [
+  {
+   "case": "hash",
+   "sent": "\\# literal hash",
+   "returned": "# literal hash",
+   "holdsBefore": "paragraph \"# literal hash\"",
+   "holdsAfterAnotherLineIsEdited": "heading_1 \"literal hash\"",
+   "foundAs": {
+    "returned": "found",
+    "sent": "refused"
+   }
+  },
+  {
+   "case": "under",
+   "sent": "\\_literal underscores\\_ here",
+   "returned": "_literal underscores_ here",
+   "holdsBefore": "paragraph \"_literal underscores_ here\"",
+   "holdsAfterAnotherLineIsEdited": "paragraph \"literal underscores\"[italic] \" here\"",
+   "foundAs": {
+    "returned": "found",
+    "sent": "refused"
+   }
+  },
+  {
+   "case": "dash",
+   "sent": "\\- literal dash",
+   "returned": "- literal dash",
+   "holdsBefore": "paragraph \"- literal dash\"",
+   "holdsAfterAnotherLineIsEdited": "bulleted_list_item \"literal dash\"",
+   "foundAs": {
+    "returned": "found",
+    "sent": "refused"
+   }
+  },
+  {
+   "case": "plus",
+   "sent": "\\+ literal plus",
+   "returned": "+ literal plus",
+   "holdsBefore": "paragraph \"+ literal plus\"",
+   "holdsAfterAnotherLineIsEdited": "bulleted_list_item \"literal plus\"",
+   "foundAs": {
+    "returned": "found",
+    "sent": "refused"
+   }
+  },
+  {
+   "case": "num",
+   "sent": "1\\. literal number",
+   "returned": "1. literal number",
+   "holdsBefore": "paragraph \"1. literal number\"",
+   "holdsAfterAnotherLineIsEdited": "numbered_list_item \"literal number\"",
+   "foundAs": {
+    "returned": "found",
+    "sent": "refused"
+   }
+  },
+  {
+   "case": "paren",
+   "sent": "1\\) literal paren",
+   "returned": "1) literal paren",
+   "holdsBefore": "paragraph \"1) literal paren\"",
+   "holdsAfterAnotherLineIsEdited": "paragraph \"1) literal paren\"",
+   "foundAs": {
+    "returned": "found",
+    "sent": "refused"
+   }
+  },
+  {
+   "case": "wiki",
+   "sent": "!\\[\\[a \\_b\\_ c\\]\\]",
+   "returned": "!\\[\\[a _b_ c\\]\\]",
+   "holdsBefore": "paragraph \"![[a _b_ c]]\"",
+   "holdsAfterAnotherLineIsEdited": "paragraph \"![[a \" \"b\"[italic] \" c]]\"",
+   "foundAs": {
+    "returned": "found",
+    "sent": "refused"
+   }
+  },
+  {
+   "case": "rule",
+   "sent": "\\---",
+   "returned": "---",
+   "holdsBefore": "paragraph \"---\"",
+   "holdsAfterAnotherLineIsEdited": "divider",
+   "foundAs": {
+    "returned": "found",
+    "sent": "refused"
+   }
+  }
+ ],
+ "search": {
+  "foundAsReturned": [
+   "<br> in a paragraph",
+   "inline math $`x`$",
+   "a colour span",
+   "\\~",
+   "**bold**",
+   "\\*",
+   "a mention inside a code span",
+   "<empty-block/> alone and with its neighbours",
+   "a self-closing mention inside a code block"
+  ],
+  "refused": [
+   "a titled mention inside a code block (code is text)",
+   "a lossy line as the translator wrote it (\\# x, \\_x\\_, \\- x, 1\\. x)"
+  ]
+ }
+}

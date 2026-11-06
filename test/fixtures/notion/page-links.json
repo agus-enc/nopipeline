@@ -1,0 +1,125 @@
+{
+  "probed": "2026-10-20",
+  "how": "One throwaway script (a throwaway script, not committed) made three pages of the scratch data source (a target, a page titled with underscores, and a linker), wrote the sent lines to the linker with replace_content and read the page back after each step below; every page it made was trashed. Each update_content searched a line in the form the page last returned it.",
+  "pages": {
+    "target": { "id": "3afdf278f9004f6e8785dc9de4afae14", "title": "Probe Target 1792470866243", "renamed": "Probe Target Renamed 1792470866243" },
+    "under": { "id": "43fa4df3889e4107865589da9614ff6d", "title": "Probe __glow__ lamp 1792470866243" },
+    "missing": { "id": "85aa8dab03ac454b81f0b275a15e300b" }
+  },
+  "notes": [
+    "A page link whose text is the page's own title stays a page link, returned as sent; after the page is renamed its text stays the old title.",
+    "The link text sent as 'Probe \\_\\_glow\\_\\_ lamp …' came back as 'Probe __glow__ lamp …' (one link) from the write that sent it, and as three links with a bold middle from the next write anywhere on the page.",
+    "update_content found every line holding a page link in the form returned, before and after the target's rename.",
+    "A link to a page in the trash, and to a page id no one has, stays as written.",
+    "The 'Odd' line was sent unescaped (its text holds '[', ']', '|', '*' as written), which Notion read as text and a page mention: it says nothing about the translator's escaped form of such a text, and the fake doesn't model it."
+  ],
+  "unescaped": ["Odd "],
+  "steps": [
+    {
+      "step": "1",
+      "what": "replace_content with the sent lines; what it returns",
+      "replace": [
+        "See [Probe Target 1792470866243](https://app.notion.com/p/3afdf278f9004f6e8785dc9de4afae14) here",
+        "And [Probe \\_\\_glow\\_\\_ lamp 1792470866243](https://app.notion.com/p/43fa4df3889e4107865589da9614ff6d) too",
+        "Head [Probe Target 1792470866243 › Sec](https://app.notion.com/p/3afdf278f9004f6e8785dc9de4afae14) there",
+        "Odd [a*b*c | x [y] z](https://app.notion.com/p/3afdf278f9004f6e8785dc9de4afae14) end",
+        "Other line"
+      ],
+      "returned": [
+        "See [Probe Target 1792470866243](https://app.notion.com/p/3afdf278f9004f6e8785dc9de4afae14) here",
+        "And [Probe __glow__ lamp 1792470866243](https://app.notion.com/p/43fa4df3889e4107865589da9614ff6d) too",
+        "Head [Probe Target 1792470866243 › Sec](https://app.notion.com/p/3afdf278f9004f6e8785dc9de4afae14) there",
+        "Odd \\[a*b*c \\| x \\[y\\] z\\](<mention-page url=\"https://app.notion.com/p/3afdf278f9004f6e8785dc9de4afae14\"/>) end",
+        "Other line"
+      ]
+    },
+    {
+      "step": "1",
+      "what": "retrieveMarkdown",
+      "read": true,
+      "returned": [
+        "See [Probe Target 1792470866243](https://app.notion.com/p/3afdf278f9004f6e8785dc9de4afae14) here",
+        "And [Probe __glow__ lamp 1792470866243](https://app.notion.com/p/43fa4df3889e4107865589da9614ff6d) too",
+        "Head [Probe Target 1792470866243 › Sec](https://app.notion.com/p/3afdf278f9004f6e8785dc9de4afae14) there",
+        "Odd \\[a*b*c \\| x \\[y\\] z\\](<mention-page url=\"https://app.notion.com/p/3afdf278f9004f6e8785dc9de4afae14\"/>) end",
+        "Other line"
+      ]
+    },
+    {
+      "step": "3",
+      "what": "update_content on the first line, as returned, adding ', edited'; what it returns",
+      "old_str": "See [Probe Target 1792470866243](https://app.notion.com/p/3afdf278f9004f6e8785dc9de4afae14) here",
+      "new_str": "See [Probe Target 1792470866243](https://app.notion.com/p/3afdf278f9004f6e8785dc9de4afae14) here, edited",
+      "returned": [
+        "See [Probe Target 1792470866243](https://app.notion.com/p/3afdf278f9004f6e8785dc9de4afae14) here, edited",
+        "And [Probe ](https://app.notion.com/p/43fa4df3889e4107865589da9614ff6d)[**glow**](https://app.notion.com/p/43fa4df3889e4107865589da9614ff6d)[ lamp 1792470866243](https://app.notion.com/p/43fa4df3889e4107865589da9614ff6d) too",
+        "Head [Probe Target 1792470866243 › Sec](https://app.notion.com/p/3afdf278f9004f6e8785dc9de4afae14) there",
+        "Odd \\[a*b*c \\| x \\[y\\] z\\](<mention-page url=\"https://app.notion.com/p/3afdf278f9004f6e8785dc9de4afae14\"/>) end",
+        "Other line"
+      ]
+    },
+    {
+      "step": "2",
+      "what": "the target renamed; retrieveMarkdown",
+      "rename": "target",
+      "returned": [
+        "See [Probe Target 1792470866243](https://app.notion.com/p/3afdf278f9004f6e8785dc9de4afae14) here, edited",
+        "And [Probe ](https://app.notion.com/p/43fa4df3889e4107865589da9614ff6d)[**glow**](https://app.notion.com/p/43fa4df3889e4107865589da9614ff6d)[ lamp 1792470866243](https://app.notion.com/p/43fa4df3889e4107865589da9614ff6d) too",
+        "Head [Probe Target 1792470866243 › Sec](https://app.notion.com/p/3afdf278f9004f6e8785dc9de4afae14) there",
+        "Odd \\[a*b*c \\| x \\[y\\] z\\](<mention-page url=\"https://app.notion.com/p/3afdf278f9004f6e8785dc9de4afae14\"/>) end",
+        "Other line"
+      ]
+    },
+    {
+      "step": "3b",
+      "what": "update_content on the first line after the rename, as returned, adding '!'; what it returns",
+      "old_str": "See [Probe Target 1792470866243](https://app.notion.com/p/3afdf278f9004f6e8785dc9de4afae14) here, edited",
+      "new_str": "See [Probe Target 1792470866243](https://app.notion.com/p/3afdf278f9004f6e8785dc9de4afae14) here, edited!",
+      "returned": [
+        "See [Probe Target 1792470866243](https://app.notion.com/p/3afdf278f9004f6e8785dc9de4afae14) here, edited!",
+        "And [Probe ](https://app.notion.com/p/43fa4df3889e4107865589da9614ff6d)[**glow**](https://app.notion.com/p/43fa4df3889e4107865589da9614ff6d)[ lamp 1792470866243](https://app.notion.com/p/43fa4df3889e4107865589da9614ff6d) too",
+        "Head [Probe Target 1792470866243 › Sec](https://app.notion.com/p/3afdf278f9004f6e8785dc9de4afae14) there",
+        "Odd \\[a*b*c \\| x \\[y\\] z\\](<mention-page url=\"https://app.notion.com/p/3afdf278f9004f6e8785dc9de4afae14\"/>) end",
+        "Other line"
+      ]
+    },
+    {
+      "step": "4b",
+      "what": "update_content on the last line (the whole page read again); what it returns",
+      "old_str": "Other line",
+      "new_str": "Other line two",
+      "returned": [
+        "See [Probe Target 1792470866243](https://app.notion.com/p/3afdf278f9004f6e8785dc9de4afae14) here, edited!",
+        "And [Probe ](https://app.notion.com/p/43fa4df3889e4107865589da9614ff6d)[**glow**](https://app.notion.com/p/43fa4df3889e4107865589da9614ff6d)[ lamp 1792470866243](https://app.notion.com/p/43fa4df3889e4107865589da9614ff6d) too",
+        "Head [Probe Target 1792470866243 › Sec](https://app.notion.com/p/3afdf278f9004f6e8785dc9de4afae14) there",
+        "Odd \\[a*b*c \\| x \\[y\\] z\\](<mention-page url=\"https://app.notion.com/p/3afdf278f9004f6e8785dc9de4afae14\"/>) end",
+        "Other line two"
+      ]
+    },
+    {
+      "step": "5",
+      "what": "the target moved to the trash; retrieveMarkdown",
+      "trash": "target",
+      "returned": [
+        "See [Probe Target 1792470866243](https://app.notion.com/p/3afdf278f9004f6e8785dc9de4afae14) here, edited!",
+        "And [Probe ](https://app.notion.com/p/43fa4df3889e4107865589da9614ff6d)[**glow**](https://app.notion.com/p/43fa4df3889e4107865589da9614ff6d)[ lamp 1792470866243](https://app.notion.com/p/43fa4df3889e4107865589da9614ff6d) too",
+        "Head [Probe Target 1792470866243 › Sec](https://app.notion.com/p/3afdf278f9004f6e8785dc9de4afae14) there",
+        "Odd \\[a*b*c \\| x \\[y\\] z\\](<mention-page url=\"https://app.notion.com/p/3afdf278f9004f6e8785dc9de4afae14\"/>) end",
+        "Other line two"
+      ]
+    },
+    {
+      "step": "5b",
+      "what": "update_content writing a link to a page id no one has, in place of the last line; what it returns",
+      "old_str": "Other line two",
+      "new_str": "Missing [Nope](https://app.notion.com/p/85aa8dab03ac454b81f0b275a15e300b) here",
+      "returned": [
+        "See [Probe Target 1792470866243](https://app.notion.com/p/3afdf278f9004f6e8785dc9de4afae14) here, edited!",
+        "And [Probe ](https://app.notion.com/p/43fa4df3889e4107865589da9614ff6d)[**glow**](https://app.notion.com/p/43fa4df3889e4107865589da9614ff6d)[ lamp 1792470866243](https://app.notion.com/p/43fa4df3889e4107865589da9614ff6d) too",
+        "Head [Probe Target 1792470866243 › Sec](https://app.notion.com/p/3afdf278f9004f6e8785dc9de4afae14) there",
+        "Odd \\[a*b*c \\| x \\[y\\] z\\](<mention-page url=\"https://app.notion.com/p/3afdf278f9004f6e8785dc9de4afae14\"/>) end",
+        "Missing [Nope](https://app.notion.com/p/85aa8dab03ac454b81f0b275a15e300b) here"
+      ]
+    }
+  ]
+}

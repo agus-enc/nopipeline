@@ -1,0 +1,264 @@
+{
+  "probed": "2026-10-08",
+  "how": "One throwaway script (scratch only, not committed) wrote these lines, one paragraph each, to a page of the scratch data source with replace_content and read the page back; the page was trashed. update_content keeps new text the same way (sent \"end __bold2__ and _it2_ and \\\\_e\\\\_ and a ~ b\", kept \"end **bold2** and *it2* and _e_ and a \\\\~ b\"). See also code-languages.json, inline (2026-10-02).",
+  "lines": [
+    {
+      "sent": "__bold__ start",
+      "kept": "**bold** start"
+    },
+    {
+      "sent": "x __bold__ y",
+      "kept": "x **bold** y"
+    },
+    {
+      "sent": "_it_ start",
+      "kept": "*it* start"
+    },
+    {
+      "sent": "x _it_ y",
+      "kept": "x *it* y"
+    },
+    {
+      "sent": "___both___ x",
+      "kept": "***both*** x"
+    },
+    {
+      "sent": "x **_mixed_** y",
+      "kept": "x ***mixed*** y"
+    },
+    {
+      "sent": "x __bold _it_ bold__ y",
+      "kept": "x **bold *it* bold** y"
+    },
+    {
+      "sent": "x _a_b_ y",
+      "kept": "x *a_b* y"
+    },
+    {
+      "sent": "foo__bar__baz",
+      "kept": "foo__bar__baz"
+    },
+    {
+      "sent": "foo_bar_baz",
+      "kept": "foo_bar_baz"
+    },
+    {
+      "sent": "x __ not bold __ y",
+      "kept": "x __ not bold __ y"
+    },
+    {
+      "sent": "x _ y",
+      "kept": "x _ y"
+    },
+    {
+      "sent": "\\_foo\\_ escaped underscores",
+      "kept": "_foo_ escaped underscores"
+    },
+    {
+      "sent": "x \\_foo\\_ y",
+      "kept": "x _foo_ y"
+    },
+    {
+      "sent": "\\*foo\\* escaped stars",
+      "kept": "\\*foo\\* escaped stars"
+    },
+    {
+      "sent": "x ~ y",
+      "kept": "x \\~ y"
+    },
+    {
+      "sent": "x ~y~ z",
+      "kept": "x \\~y\\~ z"
+    },
+    {
+      "sent": "a~b",
+      "kept": "a\\~b"
+    },
+    {
+      "sent": "~/path/file",
+      "kept": "\\~/path/file"
+    },
+    {
+      "sent": "x ~~struck~~ y",
+      "kept": "x ~~struck~~ y"
+    },
+    {
+      "sent": "x **bold**text y",
+      "kept": "x **bold**text y"
+    },
+    {
+      "sent": "x __bold__text y",
+      "kept": "x __bold__text y"
+    },
+    {
+      "sent": "x *a _b_ c* y",
+      "kept": "x *a b c* y"
+    },
+    {
+      "sent": "[_label_](https://example.com/a_b_c)",
+      "kept": "[*label*](https://example.com/a_b_c)"
+    },
+    {
+      "sent": "`a_b_c` and `__x__` code",
+      "kept": "`a_b_c` and `__x__` code"
+    },
+    {
+      "sent": "math $a_b_c$ here",
+      "kept": "math $`a_b_c`$ here"
+    },
+    {
+      "sent": "\\# not heading",
+      "kept": "# not heading"
+    },
+    {
+      "sent": "\\- not list",
+      "kept": "- not list"
+    },
+    {
+      "sent": "1\\. not ordered",
+      "kept": "1. not ordered"
+    },
+    {
+      "sent": "x \\# y",
+      "kept": "x # y"
+    },
+    {
+      "sent": "x \\\\ y",
+      "kept": "x \\\\ y"
+    },
+    {
+      "sent": "x \\a y",
+      "kept": "x a y"
+    },
+    {
+      "sent": "x _a b_ y",
+      "kept": "x *a b* y"
+    },
+    {
+      "sent": "x _a_, y",
+      "kept": "x *a*, y"
+    },
+    {
+      "sent": "(_a_)",
+      "kept": "(*a*)"
+    },
+    {
+      "sent": "x *_a_* y",
+      "kept": "x *a* y"
+    },
+    {
+      "sent": "x __a__ and __b__ y",
+      "kept": "x **a** and **b** y"
+    },
+    {
+      "sent": "x *a* y",
+      "kept": "x *a* y"
+    },
+    {
+      "sent": "x ***a*** y",
+      "kept": "x ***a*** y"
+    },
+    {
+      "sent": "x _**a**_ y",
+      "kept": "x ***a*** y"
+    },
+    {
+      "sent": "x **__a__** y",
+      "kept": "x **a** y"
+    },
+    {
+      "sent": "x _a\\_b_ y",
+      "kept": "x *a_b* y"
+    },
+    {
+      "sent": "x _a__ y",
+      "kept": "x *a*_ y"
+    },
+    {
+      "sent": "x 5 * 3 * 2 y",
+      "kept": "x 5 * 3 * 2 y"
+    },
+    {
+      "sent": "x \\~ y",
+      "kept": "x \\~ y"
+    },
+    {
+      "sent": "x \\~\\~not\\~\\~ y",
+      "kept": "x \\~\\~not\\~\\~ y"
+    },
+    {
+      "sent": "- __Loaves__: text",
+      "kept": "- **Loaves**: text"
+    },
+    {
+      "sent": "## __bold__ heading",
+      "kept": "## **bold** heading"
+    },
+    {
+      "sent": "> __bold__ quote",
+      "kept": "> **bold** quote"
+    },
+    {
+      "sent": "x __a__: b",
+      "kept": "x **a**: b"
+    },
+    {
+      "sent": "x \"_q_\" y",
+      "kept": "x \"*q*\" y"
+    },
+    {
+      "sent": "x _a_'s y",
+      "kept": "x *a*'s y"
+    },
+    {
+      "sent": "x é_a_é y",
+      "kept": "x é_a_é y"
+    },
+    {
+      "sent": "x _a_. y",
+      "kept": "x *a*. y"
+    },
+    {
+      "sent": "x **a** __b__ *c* _d_ y",
+      "kept": "x **a** **b** *c* *d* y"
+    },
+    {
+      "sent": "x ~~_a_~~ y",
+      "kept": "x *~~a~~* y"
+    },
+    {
+      "sent": "x _~~a~~_ y",
+      "kept": "x *~~a~~* y"
+    },
+    {
+      "sent": "x \\_\\_a\\_\\_ y",
+      "kept": "x __a__ y"
+    },
+    {
+      "sent": "x \\! y \\% z \\& w",
+      "kept": "x ! y % z & w"
+    },
+    {
+      "sent": "x &amp; y",
+      "kept": "x &amp; y"
+    },
+    {
+      "sent": "x * y",
+      "kept": "x \\* y"
+    },
+    {
+      "sent": "x _ y _ z",
+      "kept": "x _ y _ z"
+    }
+  ],
+  "merged": {
+    "sent": [
+      "x \\` y",
+      "x ` y"
+    ],
+    "kept": [
+      "x \\` y<br>x \\` y"
+    ]
+  },
+  "mergedNote": "A line with an escaped backtick merged with the next paragraph that holds a backtick: Notion paired the two as a code span's ends across the blocks."
+}

@@ -1,0 +1,75 @@
+{
+  "probed": "2026-10-20",
+  "how": "The live test 'page links as the translator writes them, on the first write and the writes after it' (test/live/gateway.test.ts) made three pages of the scratch data source (a target, a page titled with '[', ']', '|' and '*', and a linker), wrote the lines toNotion gives for a note linking them to the linker with replace_content, then made two update_content edits to the last line only; every page it made was trashed. 'U' stands for the target page's URL and 'O' for the odd page's, as the run recorded them.",
+  "pages": {
+    "U": {
+      "title": "Live link target 1792498051130"
+    },
+    "O": {
+      "title": "Odd [x] | a*b* c 1792498051130"
+    }
+  },
+  "notes": [
+    "The text holding '[', ']', '|' and '*', escaped as the translator writes it, came back as sent on every write.",
+    "A text partly bold, italic, struck through or code came back as one link per run of its text from the write that sent it, and the same on the two writes after it.",
+    "A probe case, a text '`__slots__` attribute', came back as two links: the code span and ' attribute'."
+  ],
+  "steps": [
+    {
+      "step": "1",
+      "what": "replace_content with the sent lines; what it returns",
+      "replace": [
+        "Plain [Live link target 1792498051130](U) here",
+        "Odd [Odd \\[x\\] \\| a\\*b\\* c 1792498051130](O) here",
+        "Bold [a **b** c](U) here",
+        "Italic [a *b* c](U) here",
+        "Strike [a ~~b~~ c](U) here",
+        "Code [a `b` c](U) here",
+        "DemoVault [`__slots__` attribute](U) here",
+        "Other line"
+      ],
+      "returned": [
+        "Plain [Live link target 1792498051130](U) here",
+        "Odd [Odd \\[x\\] \\| a\\*b\\* c 1792498051130](O) here",
+        "Bold [a ](U)[**b**](U)[ c](U) here",
+        "Italic [a ](U)[*b*](U)[ c](U) here",
+        "Strike [a ](U)[~~b~~](U)[ c](U) here",
+        "Code [a ](U)[`b`](U)[ c](U) here",
+        "DemoVault [`__slots__`](U)[ attribute](U) here",
+        "Other line"
+      ]
+    },
+    {
+      "step": "2",
+      "what": "update_content on the last line only; what it returns",
+      "old_str": "Other line",
+      "new_str": "Other line, edited",
+      "returned": [
+        "Plain [Live link target 1792498051130](U) here",
+        "Odd [Odd \\[x\\] \\| a\\*b\\* c 1792498051130](O) here",
+        "Bold [a ](U)[**b**](U)[ c](U) here",
+        "Italic [a ](U)[*b*](U)[ c](U) here",
+        "Strike [a ](U)[~~b~~](U)[ c](U) here",
+        "Code [a ](U)[`b`](U)[ c](U) here",
+        "DemoVault [`__slots__`](U)[ attribute](U) here",
+        "Other line, edited"
+      ]
+    },
+    {
+      "step": "3",
+      "what": "update_content on the last line again; what it returns",
+      "old_str": "Other line, edited",
+      "new_str": "Other line, edited twice",
+      "returned": [
+        "Plain [Live link target 1792498051130](U) here",
+        "Odd [Odd \\[x\\] \\| a\\*b\\* c 1792498051130](O) here",
+        "Bold [a ](U)[**b**](U)[ c](U) here",
+        "Italic [a ](U)[*b*](U)[ c](U) here",
+        "Strike [a ](U)[~~b~~](U)[ c](U) here",
+        "Code [a ](U)[`b`](U)[ c](U) here",
+        "DemoVault [`__slots__`](U)[ attribute](U) here",
+        "Other line, edited twice"
+      ]
+    }
+  ]
+}

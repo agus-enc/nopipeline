@@ -1,0 +1,98 @@
+{
+  "folderPropertyExisted": false,
+  "createWithPropertiesAndMarkdown": "created with **markdown**",
+  "blockIds": {
+    "before": [
+      "c56b7445-df3b-4c60-882a-d4b378f14539",
+      "549ff2df-d926-4aa9-8696-4c1979e9fd97",
+      "cfdd3641-6ade-4325-8ece-a31a0b3172a0"
+    ],
+    "afterUpdate": [
+      "c56b7445-df3b-4c60-882a-d4b378f14539",
+      "549ff2df-d926-4aa9-8696-4c1979e9fd97",
+      "cfdd3641-6ade-4325-8ece-a31a0b3172a0"
+    ],
+    "afterReplace": [
+      "c56b7445-df3b-4c60-882a-d4b378f14539",
+      "d0d68a93-7ef9-4d83-8b7f-f5b755e2b7d8",
+      "549ff2df-d926-4aa9-8696-4c1979e9fd97",
+      "cfdd3641-6ade-4325-8ece-a31a0b3172a0"
+    ],
+    "keptByUpdateContent": true,
+    "keptByReplaceContent": true
+  },
+  "mentions": "<mention-page url=\"https://app.notion.com/p/146d0c3ffedc44cd800583022f0461b2\"/>\n[custom wording](https://app.notion.com/p/146d0c3ffedc44cd800583022f0461b2)\n<mention-page url=\"https://app.notion.com/p/146d0c3ffedc44cd800583022f0461b2\"/>",
+  "constructs": {
+    "table-pipe": {
+      "sent": "| a | b |\n| --- | --- |\n| 1 | 2 |",
+      "got": "<table header-row=\"true\">\n<tr>\n<td>a</td>\n<td>b</td>\n</tr>\n<tr>\n<td>1</td>\n<td>2</td>\n</tr>\n</table>"
+    },
+    "table-xml": {
+      "sent": "<table header-row=\"true\">\n\t<tr>\n\t\t<td>a</td>\n\t\t<td>b</td>\n\t</tr>\n\t<tr>\n\t\t<td>1</td>\n\t\t<td>2</td>\n\t</tr>\n</table>",
+      "got": "<table header-row=\"true\">\n<tr>\n<td>a</td>\n<td>b</td>\n</tr>\n<tr>\n<td>1</td>\n<td>2</td>\n</tr>\n</table>"
+    },
+    "callout": {
+      "sent": "<callout icon=\"⚠️\">\n\t**Careful**\n\tBody text\n</callout>",
+      "got": "<callout icon=\"⚠️\">\n\t**Careful**\n\tBody text\n</callout>"
+    },
+    "toggle": {
+      "sent": "<details>\n<summary>Show more</summary>\n\tHidden text\n</details>",
+      "got": "<details>\n<summary>Show more</summary>\n\tHidden text\n</details>"
+    },
+    "columns": {
+      "sent": "<columns>\n\t<column>\n\t\tLeft\n\t</column>\n\t<column>\n\t\tRight\n\t</column>\n</columns>",
+      "got": "<columns>\n\t<column>\n\t\tLeft\n\t</column>\n\t<column>\n\t\tRight\n\t</column>\n</columns>"
+    },
+    "math": {
+      "sent": "$$\nx^2 + y^2\n$$\nInline $a = b$ math",
+      "got": "$$\nx^2 + y^2\n$$\nInline $`a = b`$ math"
+    },
+    "highlight": {
+      "sent": "<span color=\"yellow_bg\">marked</span> text",
+      "got": "<span color=\"yellow_bg\">marked</span> text"
+    },
+    "escapes": {
+      "sent": "a \\< b \\> c \\{x\\} \\| y \\^ z \\[1\\] \\$5 \\* \\~ \\` C:\\\\Users",
+      "got": "a \\< b \\> c \\{x\\} \\| y \\^ z \\[1\\] \\$5 \\* \\~ \\` C:\\\\Users"
+    },
+    "headings": {
+      "sent": "# One\n#### Four\n##### Five",
+      "got": "#### Four\n#### Five"
+    },
+    "lists": {
+      "sent": "- one\n\t- two\n\t\t- three\n1. first\n2. second\n- [ ] todo\n- [x] done",
+      "got": "- one\n\t- two\n\t\t- three\n1. first\n2. second\n- [ ] todo\n- [x] done"
+    },
+    "code": {
+      "sent": "```js\nconst a = [1] | 2 < 3;\n```",
+      "got": "```javascript\nconst a = [1] | 2 < 3;\n```"
+    },
+    "breaks": {
+      "sent": "line one<br>line two",
+      "got": "line one<br>line two"
+    },
+    "empty": {
+      "sent": "above\n<empty-block/>\nbelow",
+      "got": "above\n<empty-block/>\nbelow"
+    },
+    "literal": {
+      "sent": "\\[\\[Not a link\\]\\] and !\\[\\[embed\\]\\]",
+      "got": "\\[\\[Not a link\\]\\] and !\\[\\[embed\\]\\]"
+    },
+    "obsidian": {
+      "sent": "[📎 image.png](obsidian://open?vault=DemoVault&file=image.png)",
+      "got": "📎 image.png"
+    }
+  },
+  "unknown": {
+    "markdown": "before\n<unknown url=\"https://app.notion.com/p/fce3f57feac54c4b85735106e12915a4#861b6cf6b14e47da8bb42b5dbf7235b5\" alt=\"bookmark\"/>\nafter",
+    "tag": "<unknown url=\"https://app.notion.com/p/fce3f57feac54c4b85735106e12915a4#861b6cf6b14e47da8bb42b5dbf7235b5\" alt=\"bookmark\"/>",
+    "after": "before\n<unknown url=\"https://app.notion.com/p/fce3f57feac54c4b85735106e12915a4#861b6cf6b14e47da8bb42b5dbf7235b5\" alt=\"bookmark\"/>\nafter, edited",
+    "bookmarkSurvives": true
+  },
+  "lastEditedTime": "2026-09-27T15:25:00.000Z",
+  "batch": {
+    "error": null,
+    "after": "ONE\ntwo"
+  }
+}

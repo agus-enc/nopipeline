@@ -1,0 +1,806 @@
+{
+ "probed": "2026-10-09",
+ "how": "Throwaway scripts (scratch only, not committed) wrote each group's lines, one paragraph each, to a fresh page of the scratch data source with replace_content, and read the page back as markdown (kept) and through the block API (holds: block type, then each rich-text piece with its annotations, '->' a link). Every page was trashed.",
+ "groups": [
+  {
+   "name": "bare urls",
+   "lines": [
+    {
+     "sent": "see https://github.com/x/blob/main/__init__.py now",
+     "kept": "see [https://github.com/x/blob/main/](https://github.com/x/blob/main/)**init**.py now",
+     "holds": "paragraph \"see \" \"https://github.com/x/blob/main/\"->https://github.com/x/blob/main/ \"init\"[bold] \".py now\""
+    },
+    {
+     "sent": "see https://github.com/x/blob/main/**init**.py now",
+     "kept": "see [https://github.com/x/blob/main/](https://github.com/x/blob/main/)**init**.py now",
+     "holds": "paragraph \"see \" \"https://github.com/x/blob/main/\"->https://github.com/x/blob/main/ \"init\"[bold] \".py now\""
+    },
+    {
+     "sent": "see https://example.com/_private_/x now",
+     "kept": "see [https://example.com/](https://example.com/)*private*/x now",
+     "holds": "paragraph \"see \" \"https://example.com/\"->https://example.com/ \"private\"[italic] \"/x now\""
+    },
+    {
+     "sent": "see https://example.com/a_b_c now",
+     "kept": "see [https://example.com/a_b_c](https://example.com/a_b_c) now",
+     "holds": "paragraph \"see \" \"https://example.com/a_b_c\"->https://example.com/a_b_c \" now\""
+    },
+    {
+     "sent": "see www.example.com now",
+     "kept": "see [www.example.com](http://www.example.com) now",
+     "holds": "paragraph \"see \" \"www.example.com\"->http://www.example.com/ \" now\""
+    },
+    {
+     "sent": "plain https://example.com/path",
+     "kept": "plain [https://example.com/path](https://example.com/path)",
+     "holds": "paragraph \"plain \" \"https://example.com/path\"->https://example.com/path"
+    }
+   ]
+  },
+  {
+   "name": "emphasis",
+   "lines": [
+    {
+     "sent": "x **a *b* c** y",
+     "kept": "x **a *b* c** y",
+     "holds": "paragraph \"x \" \"a \"[bold] \"b\"[bold+italic] \" c\"[bold] \" y\""
+    },
+    {
+     "sent": "x *a **b** c* y",
+     "kept": "x *a b c* y",
+     "holds": "paragraph \"x \" \"a b c\"[italic] \" y\""
+    },
+    {
+     "sent": "x ~~a **b** c~~ y",
+     "kept": "x ~~a **b** c~~ y",
+     "holds": "paragraph \"x \" \"a \"[strikethrough] \"b\"[bold+strikethrough] \" c\"[strikethrough] \" y\""
+    },
+    {
+     "sent": "x **~~a~~** y",
+     "kept": "x **~~a~~** y",
+     "holds": "paragraph \"x \" \"a\"[bold+strikethrough] \" y\""
+    },
+    {
+     "sent": "x ~~**a**~~ y",
+     "kept": "x **~~a~~** y",
+     "holds": "paragraph \"x \" \"a\"[bold+strikethrough] \" y\""
+    },
+    {
+     "sent": "x *~~a~~* y",
+     "kept": "x *~~a~~* y",
+     "holds": "paragraph \"x \" \"a\"[italic+strikethrough] \" y\""
+    },
+    {
+     "sent": "x ***a*** y",
+     "kept": "x ***a*** y",
+     "holds": "paragraph \"x \" \"a\"[bold+italic] \" y\""
+    },
+    {
+     "sent": "x **a***b* y",
+     "kept": "x **a***b* y",
+     "holds": "paragraph \"x \" \"a\"[bold] \"b\"[italic] \" y\""
+    },
+    {
+     "sent": "x *a***b** y",
+     "kept": "x *a***b** y",
+     "holds": "paragraph \"x \" \"a\"[italic] \"b\"[bold] \" y\""
+    },
+    {
+     "sent": "x **a** *b* y",
+     "kept": "x **a** *b* y",
+     "holds": "paragraph \"x \" \"a\"[bold] \" \" \"b\"[italic] \" y\""
+    },
+    {
+     "sent": "x **a**b y",
+     "kept": "x **a**b y",
+     "holds": "paragraph \"x \" \"a\"[bold] \"b y\""
+    },
+    {
+     "sent": "x *a*b y",
+     "kept": "x *a*b y",
+     "holds": "paragraph \"x \" \"a\"[italic] \"b y\""
+    },
+    {
+     "sent": "x * a * y",
+     "kept": "x * a * y",
+     "holds": "paragraph \"x \" \" a \"[italic] \" y\""
+    },
+    {
+     "sent": "x **a ** y",
+     "kept": "x **a ** y",
+     "holds": "paragraph \"x \" \"a \"[bold] \" y\""
+    },
+    {
+     "sent": "x `**a**` y",
+     "kept": "x `**a**` y",
+     "holds": "paragraph \"x \" \"**a**\"[code] \" y\""
+    },
+    {
+     "sent": "x **`a`** y",
+     "kept": "x **`a`** y",
+     "holds": "paragraph \"x \" \"a\"[bold+code] \" y\""
+    },
+    {
+     "sent": "x *[a](https://example.com)* y",
+     "kept": "x [*a*](https://example.com) y",
+     "holds": "paragraph \"x \" \"a\"[italic]->https://example.com/ \" y\""
+    },
+    {
+     "sent": "x **a** **b** y",
+     "kept": "x **a** **b** y",
+     "holds": "paragraph \"x \" \"a\"[bold] \" \" \"b\"[bold] \" y\""
+    },
+    {
+     "sent": "x **a b** y",
+     "kept": "x **a b** y",
+     "holds": "paragraph \"x \" \"a b\"[bold] \" y\""
+    },
+    {
+     "sent": "x ~~a~~b y",
+     "kept": "x ~~a~~b y",
+     "holds": "paragraph \"x \" \"a\"[strikethrough] \"b y\""
+    },
+    {
+     "sent": "x <span color=\"yellow_bg\">**a**</span> y",
+     "kept": "x <span color=\"yellow_bg\">**a**</span> y",
+     "holds": "paragraph \"x \" \"a\"[bold] \" y\""
+    },
+    {
+     "sent": "x **<span color=\"yellow_bg\">a</span>** y",
+     "kept": "x <span color=\"yellow_bg\">**a**</span> y",
+     "holds": "paragraph \"x \" \"a\"[bold] \" y\""
+    }
+   ]
+  },
+  {
+   "name": "lone star",
+   "lines": [
+    {
+     "sent": "x * y",
+     "kept": "x \\* y",
+     "holds": "paragraph \"x * y\""
+    },
+    {
+     "sent": "x *y",
+     "kept": "x \\*y",
+     "holds": "paragraph \"x *y\""
+    },
+    {
+     "sent": "x* y",
+     "kept": "x\\* y",
+     "holds": "paragraph \"x* y\""
+    },
+    {
+     "sent": "a*b",
+     "kept": "a\\*b",
+     "holds": "paragraph \"a*b\""
+    },
+    {
+     "sent": "2 * 3",
+     "kept": "2 \\* 3",
+     "holds": "paragraph \"2 * 3\""
+    },
+    {
+     "sent": "2 * 3 * 4",
+     "kept": "2 * 3 * 4",
+     "holds": "paragraph \"2 \" \" 3 \"[italic] \" 4\""
+    },
+    {
+     "sent": "2 * 3 * 4 * 5",
+     "kept": "2 * 3 * 4 \\* 5",
+     "holds": "paragraph \"2 \" \" 3 \"[italic] \" 4 * 5\""
+    },
+    {
+     "sent": "a * b and c * d",
+     "kept": "a * b and c * d",
+     "holds": "paragraph \"a \" \" b and c \"[italic] \" d\""
+    },
+    {
+     "sent": "a*b*c",
+     "kept": "a*b*c",
+     "holds": "paragraph \"a\" \"b\"[italic] \"c\""
+    },
+    {
+     "sent": "*",
+     "kept": "-",
+     "holds": "bulleted_list_item "
+    },
+    {
+     "sent": "x ** y",
+     "kept": "x  y",
+     "holds": "paragraph \"x  y\""
+    },
+    {
+     "sent": "x * y **z**",
+     "kept": "x * y z*\\*",
+     "holds": "paragraph \"x \" \" y z\"[italic] \"*\""
+    },
+    {
+     "sent": "x \\* y",
+     "kept": "x \\* y",
+     "holds": "paragraph \"x * y\""
+    },
+    {
+     "sent": "* not a list",
+     "kept": "- not a list",
+     "holds": "bulleted_list_item \"not a list\""
+    }
+   ]
+  },
+  {
+   "name": "empty code",
+   "sent": [
+    "Before",
+    "```python",
+    "```",
+    "Middle",
+    "- item",
+    "\t```js",
+    "\t```",
+    "After",
+    "```",
+    "```",
+    "End"
+   ],
+   "kept": [
+    "Before",
+    "```python",
+    "",
+    "```",
+    "Middle",
+    "- item",
+    "\t```javascript",
+    "",
+    "\t```",
+    "After",
+    "```javascript",
+    "",
+    "```",
+    "End"
+   ],
+   "holds": [
+    "paragraph \"Before\"",
+    "code(python) \"\"",
+    "paragraph \"Middle\"",
+    "bulleted_list_item \"item\"",
+    "paragraph \"After\"",
+    "code(javascript) \"\"",
+    "paragraph \"End\""
+   ],
+   "note": "Each empty code block came back with one empty line in it (the block's content is empty)."
+  },
+  {
+   "name": "backticks 1",
+   "sent": [
+    "a \\` b",
+    "next line",
+    "has `code` here",
+    "end"
+   ],
+   "kept": [
+    "a \\` b<br>next line<br>has `code` here",
+    "end"
+   ],
+   "holds": [
+    "paragraph \"a ` b\\nnext line\\nhas \" \"code\"[code] \" here\"",
+    "paragraph \"end\""
+   ],
+   "note": "Lines merged: Notion took a backtick for a code span's start and joined the lines up to the next backtick."
+  },
+  {
+   "name": "backticks 2",
+   "sent": [
+    "a \\` b",
+    "> quoted line",
+    "- item",
+    "### heading",
+    "has `code` here",
+    "end"
+   ],
+   "kept": [
+    "a \\` b<br>\\> quoted line<br>- item<br>### heading<br>has `code` here",
+    "end"
+   ],
+   "holds": [
+    "paragraph \"a ` b\\n> quoted line\\n- item\\n### heading\\nhas \" \"code\"[code] \" here\"",
+    "paragraph \"end\""
+   ],
+   "note": "Lines merged: Notion took a backtick for a code span's start and joined the lines up to the next backtick."
+  },
+  {
+   "name": "backticks 3",
+   "lines": [
+    {
+     "sent": "a \\`\\` b",
+     "kept": "a \\`\\` b",
+     "holds": "paragraph \"a `` b\""
+    },
+    {
+     "sent": "next",
+     "kept": "next",
+     "holds": "paragraph \"next\""
+    },
+    {
+     "sent": "x `` y `` z",
+     "kept": "x  y  z",
+     "holds": "paragraph \"x  y  z\""
+    },
+    {
+     "sent": "end",
+     "kept": "end",
+     "holds": "paragraph \"end\""
+    }
+   ]
+  },
+  {
+   "name": "backticks 4",
+   "lines": [
+    {
+     "sent": "a \\` b",
+     "kept": "a \\` b",
+     "holds": "paragraph \"a ` b\""
+    },
+    {
+     "sent": "```python",
+     "kept": "```python",
+     "holds": "code(python) \"x = 1\""
+    },
+    {
+     "sent": "x = 1",
+     "kept": "x = 1",
+     "holds": "paragraph \"then \" \"c\"[code] \" here\""
+    },
+    {
+     "sent": "```",
+     "kept": "```",
+     "holds": "paragraph \"end\""
+    }
+   ]
+  },
+  {
+   "name": "backticks 5",
+   "sent": [
+    "- a \\` b",
+    "\t- nested",
+    "- has `code`",
+    "end"
+   ],
+   "kept": [
+    "- a \\` b<br>\t- nested<br>- has `code`",
+    "end"
+   ],
+   "holds": [
+    "bulleted_list_item \"a ` b\\n\\t- nested\\n- has \" \"code\"[code]",
+    "paragraph \"end\""
+   ],
+   "note": "Lines merged: Notion took a backtick for a code span's start and joined the lines up to the next backtick."
+  },
+  {
+   "name": "entities",
+   "lines": [
+    {
+     "sent": "x &amp; y",
+     "kept": "x &amp; y",
+     "holds": "paragraph \"x &amp; y\""
+    },
+    {
+     "sent": "x &lt;b&gt; y",
+     "kept": "x &lt;b&gt; y",
+     "holds": "paragraph \"x &lt;b&gt; y\""
+    },
+    {
+     "sent": "x &#35; y",
+     "kept": "x &#35; y",
+     "holds": "paragraph \"x &#35; y\""
+    },
+    {
+     "sent": "x &copy; y",
+     "kept": "x &copy; y",
+     "holds": "paragraph \"x &copy; y\""
+    },
+    {
+     "sent": "x & y",
+     "kept": "x & y",
+     "holds": "paragraph \"x & y\""
+    },
+    {
+     "sent": "x &nbsp; y",
+     "kept": "x &nbsp; y",
+     "holds": "paragraph \"x &nbsp; y\""
+    }
+   ]
+  },
+  {
+   "name": "underscores",
+   "lines": [
+    {
+     "sent": "snake_case_name here",
+     "kept": "snake_case_name here",
+     "holds": "paragraph \"snake_case_name here\""
+    },
+    {
+     "sent": "foo_bar_baz",
+     "kept": "foo_bar_baz",
+     "holds": "paragraph \"foo_bar_baz\""
+    },
+    {
+     "sent": "x _ y _ z",
+     "kept": "x _ y _ z",
+     "holds": "paragraph \"x _ y _ z\""
+    },
+    {
+     "sent": "a_b",
+     "kept": "a_b",
+     "holds": "paragraph \"a_b\""
+    },
+    {
+     "sent": "x _a _ b_ y",
+     "kept": "x *a _ b* y",
+     "holds": "paragraph \"x \" \"a _ b\"[italic] \" y\""
+    },
+    {
+     "sent": "file_name.py and other_file.py",
+     "kept": "file_[name.py](http://name.py) and other_[file.py](http://file.py)",
+     "holds": "paragraph \"file_\" \"name.py\"->http://name.py/ \" and other_\" \"file.py\"->http://file.py/"
+    },
+    {
+     "sent": "__init__",
+     "kept": "**init**",
+     "holds": "paragraph \"init\"[bold]"
+    },
+    {
+     "sent": "x __init__ y",
+     "kept": "x **init** y",
+     "holds": "paragraph \"x \" \"init\"[bold] \" y\""
+    },
+    {
+     "sent": "_x_y_",
+     "kept": "*x_y*",
+     "holds": "paragraph \"x_y\"[italic]"
+    },
+    {
+     "sent": "x_ y _x",
+     "kept": "x_ y _x",
+     "holds": "paragraph \"x_ y _x\""
+    },
+    {
+     "sent": "my_var = other_var",
+     "kept": "my_var = other_var",
+     "holds": "paragraph \"my_var = other_var\""
+    },
+    {
+     "sent": "a __ b __ c",
+     "kept": "a __ b __ c",
+     "holds": "paragraph \"a __ b __ c\""
+    },
+    {
+     "sent": "_a_b",
+     "kept": "_a_b",
+     "holds": "paragraph \"_a_b\""
+    }
+   ]
+  },
+  {
+   "name": "tildes and stars",
+   "lines": [
+    {
+     "sent": "x ~~ a ~~ y",
+     "kept": "x ~~ a ~~ y",
+     "holds": "paragraph \"x \" \" a \"[strikethrough] \" y\""
+    },
+    {
+     "sent": "x ~~a ~~ y",
+     "kept": "x ~~a ~~ y",
+     "holds": "paragraph \"x \" \"a \"[strikethrough] \" y\""
+    },
+    {
+     "sent": "x **a ** y",
+     "kept": "x **a ** y",
+     "holds": "paragraph \"x \" \"a \"[bold] \" y\""
+    },
+    {
+     "sent": "x ** y",
+     "kept": "x  y",
+     "holds": "paragraph \"x  y\""
+    },
+    {
+     "sent": "x **** y",
+     "kept": "x  y",
+     "holds": "paragraph \"x  y\""
+    },
+    {
+     "sent": "x * * y",
+     "kept": "x * * y",
+     "holds": "paragraph \"x \" \" \"[italic] \" y\""
+    },
+    {
+     "sent": "x \\* y",
+     "kept": "x \\* y",
+     "holds": "paragraph \"x * y\""
+    },
+    {
+     "sent": "x \\*a\\* y",
+     "kept": "x \\*a\\* y",
+     "holds": "paragraph \"x *a* y\""
+    },
+    {
+     "sent": "a * b * c",
+     "kept": "a * b * c",
+     "holds": "paragraph \"a \" \" b \"[italic] \" c\""
+    },
+    {
+     "sent": "x *a * y",
+     "kept": "x *a * y",
+     "holds": "paragraph \"x \" \"a \"[italic] \" y\""
+    },
+    {
+     "sent": "x * a* y",
+     "kept": "x * a* y",
+     "holds": "paragraph \"x \" \" a\"[italic] \" y\""
+    }
+   ]
+  },
+  {
+   "name": "code spans",
+   "sent": [
+    "The value is ``!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~``.",
+    "x `` a ` b `` y",
+    "x ``a`` y",
+    "x ```a``` y",
+    "x `a` y",
+    "x ` a ` y",
+    "x `` ` `` y"
+   ],
+   "kept": [
+    "The value is !\"#\\$%&'()\\*+,-./:;\\<=\\>?@\\[\\]\\^_`{|}~.<br>x  a ` b  y",
+    "x a y",
+    "x `a` y",
+    "x `a` y",
+    "x ` a ` y",
+    "x  ` `\\` y"
+   ],
+   "holds": [
+    "paragraph \"The value is !\\\"#$%&'()*+,-./:;<=>?@[]^_\" \"{|}~.\\nx  a \"[code] \" b  y\"",
+    "paragraph \"x a y\"",
+    "paragraph \"x \" \"a\"[code] \" y\"",
+    "paragraph \"x \" \"a\"[code] \" y\"",
+    "paragraph \"x \" \" a \"[code] \" y\"",
+    "paragraph \"x  \" \" \"[code] \"` y\""
+   ],
+   "note": "Lines merged: Notion took a backtick for a code span's start and joined the lines up to the next backtick."
+  },
+  {
+   "name": "bare url edges",
+   "lines": [
+    {
+     "sent": "see https://example.com/path.",
+     "kept": "see [https://example.com/path](https://example.com/path).",
+     "holds": "paragraph \"see \" \"https://example.com/path\"->https://example.com/path \".\""
+    },
+    {
+     "sent": "see https://example.com/path, then",
+     "kept": "see [https://example.com/path](https://example.com/path), then",
+     "holds": "paragraph \"see \" \"https://example.com/path\"->https://example.com/path \", then\""
+    },
+    {
+     "sent": "(see https://example.com/path)",
+     "kept": "(see [https://example.com/path](https://example.com/path))",
+     "holds": "paragraph \"(see \" \"https://example.com/path\"->https://example.com/path \")\""
+    },
+    {
+     "sent": "see https://example.com/a(b)c here",
+     "kept": "see [https://example.com/a(b)c](https://example.com/a(b)c) here",
+     "holds": "paragraph \"see \" \"https://example.com/a(b)c\"->https://example.com/a(b)c \" here\""
+    },
+    {
+     "sent": "see https://example.com/?q=1&r=2#frag here",
+     "kept": "see [https://example.com/?q=1&r=2#frag](https://example.com/?q=1&r=2#frag) here",
+     "holds": "paragraph \"see \" \"https://example.com/?q=1&r=2#frag\"->https://example.com/?q=1&r=2#frag \" here\""
+    },
+    {
+     "sent": "see https://example.com/path! wow",
+     "kept": "see [https://example.com/path](https://example.com/path)! wow",
+     "holds": "paragraph \"see \" \"https://example.com/path\"->https://example.com/path \"! wow\""
+    },
+    {
+     "sent": "see http://example.com here",
+     "kept": "see [http://example.com](http://example.com) here",
+     "holds": "paragraph \"see \" \"http://example.com\"->http://example.com/ \" here\""
+    },
+    {
+     "sent": "see ftp://example.com here",
+     "kept": "see ftp://example.com here",
+     "holds": "paragraph \"see ftp://example.com here\""
+    },
+    {
+     "sent": "mail me@example.com here",
+     "kept": "mail [me@example.com](mailto:me@example.com) here",
+     "holds": "paragraph \"mail \" \"me@example.com\"->mailto:me@example.com \" here\""
+    },
+    {
+     "sent": "see https://example.com/~user here",
+     "kept": "see [https://example.com/\\~user](https://example.com/~user) here",
+     "holds": "paragraph \"see \" \"https://example.com/~user\"->https://example.com/~user \" here\""
+    },
+    {
+     "sent": "see https://example.com/*star*/x here",
+     "kept": "see [https://example.com/](https://example.com/)*star*/x here",
+     "holds": "paragraph \"see \" \"https://example.com/\"->https://example.com/ \"star\"[italic] \"/x here\""
+    },
+    {
+     "sent": "see <https://example.com/a> here",
+     "kept": "see \\<[https://example.com/a](https://example.com/a)\\> here",
+     "holds": "paragraph \"see <\" \"https://example.com/a\"->https://example.com/a \"> here\""
+    }
+   ]
+  },
+  {
+   "name": "file names",
+   "lines": [
+    {
+     "sent": "run script.py now",
+     "kept": "run [script.py](http://script.py) now",
+     "holds": "paragraph \"run \" \"script.py\"->http://script.py/ \" now\""
+    },
+    {
+     "sent": "see README.md now",
+     "kept": "see [README.md](http://README.md) now",
+     "holds": "paragraph \"see \" \"README.md\"->http://readme.md/ \" now\""
+    },
+    {
+     "sent": "edit config.yaml now",
+     "kept": "edit config.yaml now",
+     "holds": "paragraph \"edit config.yaml now\""
+    },
+    {
+     "sent": "open notes.txt now",
+     "kept": "open notes.txt now",
+     "holds": "paragraph \"open notes.txt now\""
+    },
+    {
+     "sent": "use app.js now",
+     "kept": "use app.js now",
+     "holds": "paragraph \"use app.js now\""
+    },
+    {
+     "sent": "build main.go now",
+     "kept": "build main.go now",
+     "holds": "paragraph \"build main.go now\""
+    },
+    {
+     "sent": "visit example.org now",
+     "kept": "visit [example.org](http://example.org) now",
+     "holds": "paragraph \"visit \" \"example.org\"->http://example.org/ \" now\""
+    },
+    {
+     "sent": "try x.io now",
+     "kept": "try [x.io](http://x.io) now",
+     "holds": "paragraph \"try \" \"x.io\"->http://x.io/ \" now\""
+    },
+    {
+     "sent": "a.b c",
+     "kept": "a.b c",
+     "holds": "paragraph \"a.b c\""
+    },
+    {
+     "sent": "load data.csv now",
+     "kept": "load data.csv now",
+     "holds": "paragraph \"load data.csv now\""
+    },
+    {
+     "sent": "image.png here",
+     "kept": "image.png here",
+     "holds": "paragraph \"image.png here\""
+    },
+    {
+     "sent": "file.sh here",
+     "kept": "[file.sh](http://file.sh) here",
+     "holds": "paragraph \"file.sh\"->http://file.sh/ \" here\""
+    },
+    {
+     "sent": "the os.path module",
+     "kept": "the os.path module",
+     "holds": "paragraph \"the os.path module\""
+    },
+    {
+     "sent": "call list.append(x)",
+     "kept": "call list.append(x)",
+     "holds": "paragraph \"call list.append(x)\""
+    },
+    {
+     "sent": "version 1.2.3 here",
+     "kept": "version 1.2.3 here",
+     "holds": "paragraph \"version 1.2.3 here\""
+    },
+    {
+     "sent": "e.g. this",
+     "kept": "e.g. this",
+     "holds": "paragraph \"e.g. this\""
+    },
+    {
+     "sent": "end. Next",
+     "kept": "end. Next",
+     "holds": "paragraph \"end. Next\""
+    },
+    {
+     "sent": "Python.org and python.org",
+     "kept": "[Python.org](http://Python.org) and [python.org](http://python.org)",
+     "holds": "paragraph \"Python.org\"->http://python.org/ \" and \" \"python.org\"->http://python.org/"
+    },
+    {
+     "sent": "name@host",
+     "kept": "name@host",
+     "holds": "paragraph \"name@host\""
+    },
+    {
+     "sent": "foo.co.uk bar",
+     "kept": "[foo.co.uk](http://foo.co.uk) bar",
+     "holds": "paragraph \"foo.co.uk\"->http://foo.co.uk/ \" bar\""
+    }
+   ]
+  },
+  {
+   "name": "code escapes",
+   "sent": [
+    "x `a \\` b` y",
+    "x `C:\\Users\\me` y",
+    "x `a\\]b` y",
+    "x `a\\\\b` y",
+    "x `a\\*b` y",
+    "x ``a ` b`` y"
+   ],
+   "kept": [
+    "x `a \\` b` y<br>x `C:Usersme` y<br>x `a\\]b` y<br>x `a\\\\b` y<br>x `a\\*b` y<br>x a ` b y"
+   ],
+   "holds": [
+    "paragraph \"x \" \"a \\\\\"[code] \" b\" \" y\\nx \"[code] \"C:Usersme\" \" y\\nx \"[code] \"a]b\" \" y\\nx \"[code] \"a\\\\b\" \" y\\nx \"[code] \"a*b\" \" y\\nx a \"[code] \" b y\""
+   ],
+   "note": "The first line's escaped backtick inside a code span made the backticks odd: every line after it merged into it."
+  },
+  {
+   "name": "italic around bold",
+   "lines": [
+    {
+     "sent": "x *a **b** c* y",
+     "kept": "x *a b c* y",
+     "holds": "paragraph \"x \" \"a b c\"[italic] \" y\""
+    },
+    {
+     "sent": "x _a **b** c_ y",
+     "kept": "x *a **b** c* y",
+     "holds": "paragraph \"x \" \"a \"[italic] \"b\"[bold+italic] \" c\"[italic] \" y\""
+    },
+    {
+     "sent": "x *a* ***b*** *c* y",
+     "kept": "x *a* ***b*** *c* y",
+     "holds": "paragraph \"x \" \"a\"[italic] \" \" \"b\"[bold+italic] \" \" \"c\"[italic] \" y\""
+    },
+    {
+     "sent": "x *a ***b*** c* y",
+     "kept": "x *a ***b*** c* y",
+     "holds": "paragraph \"x \" \"a \"[italic] \"b\"[bold] \" c\"[italic] \" y\""
+    },
+    {
+     "sent": "x _a __b__ c_ y",
+     "kept": "x *a __b*_ c_ y",
+     "holds": "paragraph \"x \" \"a __b\"[italic] \"_ c_ y\""
+    },
+    {
+     "sent": "x *a __b__ c* y",
+     "kept": "x *a **b** c* y",
+     "holds": "paragraph \"x \" \"a \"[italic] \"b\"[bold+italic] \" c\"[italic] \" y\""
+    },
+    {
+     "sent": "x ***a** b* y",
+     "kept": "x **\\*a** b\\* y",
+     "holds": "paragraph \"x \" \"*a\"[bold] \" b* y\""
+    },
+    {
+     "sent": "x ***a* b** y",
+     "kept": "x ***a* b** y",
+     "holds": "paragraph \"x \" \"a\"[bold+italic] \" b\"[bold] \" y\""
+    }
+   ]
+  }
+ ]
+}

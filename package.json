@@ -1,0 +1,34 @@
+{
+  "name": "nopipeline",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Two-way sync between an Obsidian vault and a Notion database that keeps links between notes working",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/agus-enc/nopipeline.git"
+  },
+  "type": "module",
+  "bin": {
+    "nopipeline": "src/cli.ts"
+  },
+  "engines": {
+    "node": ">=22.22"
+  },
+  "scripts": {
+    "test": "node --test \"test/**/*.test.ts\"",
+    "typecheck": "tsc -p .",
+    "check": "npm run typecheck && npm test",
+    "sync": "node src/cli.ts sync",
+    "setup": "node src/cli.ts setup"
+  },
+  "dependencies": {
+    "@notionhq/client": "5.26.0",
+    "node-diff3": "3.2.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.4",
+    "fast-check": "4.10.2",
+    "typescript": "7.0.2"
+  }
+}

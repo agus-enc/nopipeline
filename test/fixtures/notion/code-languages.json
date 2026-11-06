@@ -1,0 +1,284 @@
+{
+ "probed": "2026-10-02, scratch data source",
+ "fences": [
+  {
+   "nested": false,
+   "sent": "python",
+   "kept": "python"
+  },
+  {
+   "nested": false,
+   "sent": "js",
+   "kept": "javascript"
+  },
+  {
+   "nested": false,
+   "sent": "",
+   "kept": "javascript"
+  },
+  {
+   "nested": false,
+   "sent": "bash",
+   "kept": "bash"
+  },
+  {
+   "nested": false,
+   "sent": "Bash",
+   "kept": "bash"
+  },
+  {
+   "nested": false,
+   "sent": "Build log, part 2",
+   "kept": "javascript"
+  },
+  {
+   "nested": false,
+   "sent": "Python",
+   "kept": "python"
+  },
+  {
+   "nested": false,
+   "sent": "yaml",
+   "kept": "yaml"
+  },
+  {
+   "nested": false,
+   "sent": "py",
+   "kept": "python"
+  },
+  {
+   "nested": false,
+   "sent": "sh",
+   "kept": "bash"
+  },
+  {
+   "nested": false,
+   "sent": "shell",
+   "kept": "shell"
+  },
+  {
+   "nested": false,
+   "sent": "zsh",
+   "kept": "javascript"
+  },
+  {
+   "nested": false,
+   "sent": "ts",
+   "kept": "typescript"
+  },
+  {
+   "nested": false,
+   "sent": "typescript",
+   "kept": "typescript"
+  },
+  {
+   "nested": false,
+   "sent": "javascript",
+   "kept": "javascript"
+  },
+  {
+   "nested": false,
+   "sent": "json",
+   "kept": "json"
+  },
+  {
+   "nested": false,
+   "sent": "sql",
+   "kept": "sql"
+  },
+  {
+   "nested": false,
+   "sent": "html",
+   "kept": "html"
+  },
+  {
+   "nested": false,
+   "sent": "css",
+   "kept": "css"
+  },
+  {
+   "nested": false,
+   "sent": "yml",
+   "kept": "yaml"
+  },
+  {
+   "nested": false,
+   "sent": "text",
+   "kept": "plain text"
+  },
+  {
+   "nested": false,
+   "sent": "txt",
+   "kept": "plain text"
+  },
+  {
+   "nested": false,
+   "sent": "plaintext",
+   "kept": "plain text"
+  },
+  {
+   "nested": false,
+   "sent": "c",
+   "kept": "c"
+  },
+  {
+   "nested": false,
+   "sent": "cpp",
+   "kept": "c++"
+  },
+  {
+   "nested": false,
+   "sent": "c++",
+   "kept": "c++"
+  },
+  {
+   "nested": false,
+   "sent": "java",
+   "kept": "java"
+  },
+  {
+   "nested": false,
+   "sent": "go",
+   "kept": "go"
+  },
+  {
+   "nested": false,
+   "sent": "rust",
+   "kept": "rust"
+  },
+  {
+   "nested": false,
+   "sent": "powershell",
+   "kept": "powershell"
+  },
+  {
+   "nested": false,
+   "sent": "dockerfile",
+   "kept": "docker"
+  },
+  {
+   "nested": false,
+   "sent": "markdown",
+   "kept": "markdown"
+  },
+  {
+   "nested": false,
+   "sent": "md",
+   "kept": "markdown"
+  },
+  {
+   "nested": false,
+   "sent": "xml",
+   "kept": "xml"
+  },
+  {
+   "nested": false,
+   "sent": "toml",
+   "kept": "toml"
+  },
+  {
+   "nested": false,
+   "sent": "diff",
+   "kept": "diff"
+  },
+  {
+   "nested": false,
+   "sent": "foo",
+   "kept": "javascript"
+  },
+  {
+   "nested": true,
+   "sent": "python",
+   "kept": "python"
+  },
+  {
+   "nested": true,
+   "sent": "python",
+   "kept": "python"
+  },
+  {
+   "nested": true,
+   "sent": "js",
+   "kept": "javascript"
+  },
+  {
+   "nested": true,
+   "sent": "js",
+   "kept": "javascript"
+  },
+  {
+   "nested": true,
+   "sent": "",
+   "kept": "javascript"
+  },
+  {
+   "nested": true,
+   "sent": "",
+   "kept": "javascript"
+  },
+  {
+   "nested": true,
+   "sent": "bash",
+   "kept": "bash"
+  },
+  {
+   "nested": true,
+   "sent": "bash",
+   "kept": "bash"
+  },
+  {
+   "nested": true,
+   "sent": "Bash",
+   "kept": "bash"
+  },
+  {
+   "nested": true,
+   "sent": "Bash",
+   "kept": "bash"
+  },
+  {
+   "nested": true,
+   "sent": "Build log, part 2",
+   "kept": "javascript"
+  },
+  {
+   "nested": true,
+   "sent": "Build log, part 2",
+   "kept": "javascript"
+  },
+  {
+   "nested": true,
+   "sent": "Python",
+   "kept": "python"
+  },
+  {
+   "nested": true,
+   "sent": "Python",
+   "kept": "python"
+  },
+  {
+   "nested": true,
+   "sent": "yaml",
+   "kept": "yaml"
+  },
+  {
+   "nested": true,
+   "sent": "yaml",
+   "kept": "yaml"
+  }
+ ],
+ "inline": [
+  {
+   "sent": "a \\# b \\- c \\. d \\= e \\! f \\% g \\& h \\_ i \\( j \\* k \\~ l",
+   "kept": "a # b - c . d = e ! f % g & h _ i ( j \\* k \\~ l"
+  },
+  {
+   "sent": "2 * 3 and a_b and x ~ y and snake_case_name and a*b",
+   "kept": "2 * 3 and a_b and x \\~ y and snake_case_name and a*b"
+  },
+  {
+   "sent": "_italic_ and __bold__ and *star* and **strong** and ~~struck~~",
+   "kept": "*italic* and **bold** and *star* and **strong** and ~~struck~~"
+  }
+ ]
+}

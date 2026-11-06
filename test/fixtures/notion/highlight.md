@@ -1,0 +1,1 @@
+<span color="yellow_bg">marked</span> text

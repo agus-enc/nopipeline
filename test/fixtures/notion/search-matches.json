@@ -1,0 +1,10 @@
+{
+  "probed": "2026-10-14",
+  "how": "A throwaway script (scratch only, not committed) wrote each page with replace_content on a fresh page of the scratch data source and sent one update_content edit; refused edits changed nothing.",
+  "cases": [
+    { "page": "dup\nmiddle\ndup\nend", "old_str": "dup", "new_str": "dup edited", "refused": "Multiple matches found for \"dup\". Found 2 matches." },
+    { "page": "alpha\nalpha beta\nend", "old_str": "alpha", "new_str": "alpha edited", "refused": "Multiple matches found for \"alpha\". Found 2 matches." },
+    { "page": "alpha\nalpha beta\nend", "old_str": "alpha\nalpha beta", "new_str": "alpha edited\nalpha beta", "after": "alpha edited\nalpha beta\nend" },
+    { "page": "x **dup** y\nx dup y\nend", "old_str": "x dup y", "new_str": "x dup y edited", "after": "x **dup** y\nx dup y edited\nend" }
+  ]
+}

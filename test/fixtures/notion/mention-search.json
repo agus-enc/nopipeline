@@ -1,0 +1,35 @@
+{
+  "probed": "2026-10-08",
+  "how": "Seven throwaway scripts (scratch only, not committed) wrote lines with mentions to pages of the scratch data source with replace_content, then searched each line with update_content in several forms; every page they made was trashed. retrieveMarkdown returns every page mention self-closing: <mention-page url=\"https://app.notion.com/p/<id>\"/>. A database mention comes back with its title: <mention-database url=\"…\">Title</mention-database>.",
+  "notes": [
+    "A mention of a page in the trash was found by its titled form in two probes (from 2 s to 90 s after the trash) and only by its self-closing form in two others: either can be the one.",
+    "Twice a titled search Notion otherwise finds was refused: once for a line with two mentions of one page, once for a run of lines after an edit that wrote a broken mention URL. Five later probes repeating both found every titled form. A refused search changes nothing."
+  ],
+  "cases": [
+    { "case": "a page in the database, titled with its current title", "target": "live", "search": "titled", "found": true },
+    { "case": "the same line as retrieveMarkdown returns it", "target": "live", "search": "self-closing", "found": false },
+    { "case": "titled with another title", "target": "live", "search": "other title", "found": false },
+    { "case": "titled with no title", "target": "live", "search": "empty", "found": false },
+    { "case": "the title's text without the tag", "target": "live", "search": "title alone", "found": false },
+    { "case": "the part of the line after the mention", "target": "live", "search": "beside", "found": true },
+    { "case": "a renamed page, titled with its new title", "target": "renamed", "search": "titled", "found": true },
+    { "case": "a renamed page, titled with its old title", "target": "renamed", "search": "old title", "found": false },
+    { "case": "an untitled page, titled with no title", "target": "untitled", "search": "empty", "found": true },
+    { "case": "an untitled page, titled Untitled", "target": "untitled", "search": "Untitled", "found": false },
+    { "case": "a title with [ ] * < >, written raw", "target": "special", "search": "titled", "found": true },
+    { "case": "a page outside the database (a page's child page), also after a rename", "target": "outside", "search": "titled", "found": true },
+    { "case": "a page no one has, which the connection can't tell from one it can't see", "target": "missing", "search": "self-closing", "found": true },
+    { "case": "the same, titled with no title", "target": "missing", "search": "empty", "found": false },
+    { "case": "the same, titled Untitled", "target": "missing", "search": "Untitled", "found": false },
+    { "case": "a page in the trash, self-closing", "target": "trashed", "search": "self-closing", "found": "either" },
+    { "case": "a page in the trash, titled", "target": "trashed", "search": "titled", "found": "either" }
+  ],
+  "asReturned": [
+    "<mention-date start=\"2026-09-01\"/>",
+    "<mention-date start=\"2026-09-01\" end=\"2026-09-03\"/>",
+    "<mention-user url=\"user://…\"/>",
+    "<mention-database url=\"…\">Title</mention-database>",
+    "[link text](https://app.notion.com/p/…)"
+  ],
+  "newStr": "A mention in new_str may be self-closing or titled (with any title): Notion keeps it and returns it self-closing."
+}
