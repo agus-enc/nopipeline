@@ -86,7 +86,7 @@ On Fedora, updates come with the system:
 sudo dnf upgrade
 ```
 
-To go back, `sudo dnf downgrade nopipeline` installs the previous build, while Copr still has it. The changelog says if going back past a version is unsafe.
+To go back, `sudo dnf downgrade nopipeline` installs the previous build, while Copr still has it. Copr keeps one build of each package indefinitely and [deletes the other builds after 14 days](https://docs.copr.fedorainfracloud.org/user_documentation.html), so a downgrade works for about two weeks after an update. The changelog says if going back past a version is unsafe.
 
 Before you remove the package with `dnf remove nopipeline`, remove what it set up: run `nopipeline auto uninstall` and `nopipeline launcher uninstall`, once for each profile you installed them for (add `--config <file>` for a profile other than the default). The package can't do that for you, because those files live in your home folder.
 

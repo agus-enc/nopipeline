@@ -119,9 +119,9 @@ Before you start, check that no note writes the old folder's path, because a cit
 grep -r "Attachments/" <vault> --include="*.md" --include="*.canvas"
 ```
 
-Then:
+Then (from a clone, `nopipeline …` below is `node src/cli.ts …`):
 
-1. **Run an ordinary sync first.** Run `node src/cli.ts sync` and confirm it ends with nothing left unswitched:
+1. **Run an ordinary sync first.** Run `nopipeline sync` and confirm it ends with nothing left unswitched:
    - no `image_not_switched` and no placeholder warning in its output;
    - `"unattached": []` in `images.json` of the state folder.
 
@@ -143,11 +143,11 @@ Then:
    ```
 
 5. **Set `attachmentFolderPath`** in `.obsidian/app.json` to `Files`.
-6. **Preview:** `node src/cli.ts sync --dry-run`.
+6. **Preview:** `nopipeline sync --dry-run`.
    - The plan should say there is nothing to do (apart from the notes of step 3 you chose to leave in the folder).
    - The only lines expected under "Attachments" are "moved:" ones, one per synced file.
    - Anything else (an upload, a download, a note to update) means something is not as described, so stop and look.
-7. **Run** `node src/cli.ts sync`. Its summary should read "Everything was already in sync." (plus the notes of step 3, if any) followed by the same "moved:" lines. Nothing is uploaded, downloaded or rewritten.
+7. **Run** `nopipeline sync`. Its summary should read "Everything was already in sync." (plus the notes of step 3, if any) followed by the same "moved:" lines. Nothing is uploaded, downloaded or rewritten.
 
 ## Limits
 

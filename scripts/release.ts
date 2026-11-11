@@ -41,9 +41,9 @@ export async function checkRelease(
   } catch {
     // reported below
   }
-  const lines = (signers ?? "").split("\n").filter((l) => l.trim() !== "");
+  // Exactly what packaging/build-source.sh accepts: that one line, one trailing newline allowed, nothing else.
   if (signers === null) problems.push(".release-signers is missing (it holds one line: releases ssh-ed25519 <public key>)");
-  else if (lines.length !== 1 || !/^releases ssh-ed25519 [A-Za-z0-9+/=]+( .*)?$/.test(lines[0]!)) {
+  else if (!/^releases ssh-ed25519 [A-Za-z0-9+/=]+\n?$/.test(signers)) {
     problems.push(".release-signers must hold exactly one line: releases ssh-ed25519 <public key>");
   }
 

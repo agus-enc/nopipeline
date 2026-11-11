@@ -24,7 +24,9 @@ test("--version prints the version and exits 0", async () => {
   const out: string[] = [];
   assert.equal(await main(["--version"], (line) => out.push(line)), 0);
   assert.equal(out.length, 1);
-  assert.match(out[0]!, /^nopipeline 0\.2\.0/);
+  const { version } = JSON.parse(await readFile(join(import.meta.dirname, "../package.json"), "utf8")) as { version: string };
+  assert.match(out[0]!, /^nopipeline \d+\.\d+\.\d+/);
+  assert.ok(out[0]!.startsWith(`nopipeline ${version}`), out[0]);
 });
 
 test("a missing config file is reported plainly", async () => {

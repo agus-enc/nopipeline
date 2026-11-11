@@ -46,7 +46,7 @@ The newest heading must equal `version` in `package.json`; a test checks it.
 
 ### Cutting a release
 
-1. Bump `version` in `package.json` and add the `CHANGELOG.md` section.
+1. Bump `version` in `package.json` and add the `CHANGELOG.md` section, with the heading's date set to the release day.
 2. Merge to `main` after `npm run check` is green.
 3. Check and print the commands:
 
@@ -69,7 +69,7 @@ A fix that only touches packaging is a new patch version, so the version always 
 
 - ignores every `GIT_*` variable and the machine's git configuration;
 - clones the repository and picks the newest `vX.Y.Z` tag;
-- checks the tag is annotated and that its SSH signature is valid for the single key in its `ALLOWED_SIGNERS` line, and that the signed tag has that name; otherwise it stops;
+- checks the tag is annotated and that its SSH signature (an OpenPGP or x509 one is refused, and those verifiers are disabled) is valid for the single key in its `ALLOWED_SIGNERS` line, and that the signed tag has that name; otherwise it stops;
 - checks `package.json` says the tag's version;
 - builds from `git archive` of the tag, so files marked `export-ignore` in `.gitattributes` (`test/`, `scripts/`, `.github/`) are left out;
 - runs `npm ci --omit=dev --ignore-scripts` and `npm audit signatures`;
@@ -94,6 +94,7 @@ The script is stored in Copr as a full copy with the key filled in, never as a s
 copy="$(mktemp)"
 sed "s|@RELEASE_SIGNERS@|$(cat .release-signers)|" packaging/build-source.sh > "$copy"
 grep -c '@RELEASE_SIGNERS@' "$copy"    # prints 0
+grep -c "^ALLOWED_SIGNERS='releases ssh-ed25519 " "$copy"    # prints 1 (an empty .release-signers must not pass)
 ```
 
 To update the stored script, upload the new copy (flags as in the Copr docs; see `copr-cli edit-package-custom --help`):

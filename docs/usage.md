@@ -4,12 +4,12 @@ The commands, their options, exit codes, notes on how a run behaves, and where t
 
 ## Commands and options
 
-Everything below also works as `node src/cli.ts …` or `npm run sync -- …` from this folder, or as `nopipeline …` after `npm link` (see [Setup](setup.md#from-a-clone-npm-link)).
+Everything below is written as `nopipeline …`, which works from the Fedora package or after `npm link` (see [Setup](setup.md#from-a-clone-npm-link)). From a clone, `node src/cli.ts …` does the same (`npm run sync -- …` and `nopipeline setup` also work from the clone's folder).
 
 ### `sync`
 
 ```bash
-npm run sync -- --dry-run
+nopipeline sync --dry-run
 ```
 
 shows what a sync would change. It changes nothing in your vault's notes or in Notion. It still writes the status note and `last-run.log`, and it never writes `held.json`.
@@ -17,10 +17,10 @@ shows what a sync would change. It changes nothing in your vault's notes or in N
 The first real run on a profile also only previews, until you add `--yes`:
 
 ```bash
-npm run sync -- --yes
+nopipeline sync --yes
 ```
 
-After that, `npm run sync` syncs both ways.
+After that, `nopipeline sync` syncs both ways.
 
 | Option | What it does |
 |---|---|
@@ -44,7 +44,7 @@ applies what the last real run held. See [Confirm](desktop.md#confirm).
 ### `setup`
 
 ```bash
-npm run setup
+nopipeline setup
 ```
 
 asks the questions in [Setup](setup.md#4-run-the-setup) and writes the profile. `--config <file>` writes it somewhere else.

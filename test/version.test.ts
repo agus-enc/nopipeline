@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { versionString } from "../src/version.ts";
 import { tempDir } from "./helpers/tmp.ts";
 
-const repo = new URL("..", import.meta.url).pathname;
+const repo = fileURLToPath(new URL("..", import.meta.url));
 
 test("versionString reads version.json when the package has one", async (t) => {
   const dir = await tempDir(t);

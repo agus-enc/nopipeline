@@ -2,12 +2,13 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { chmod, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { scriptWith, signedRepo, toolsAvailable, type TagSpec } from "../helpers/signed-repo.ts";
 import { tempDir } from "../helpers/tmp.ts";
 import { readFileSync } from "node:fs";
 
-const repo = new URL("../..", import.meta.url).pathname;
+const repo = fileURLToPath(new URL("../..", import.meta.url));
 const skip = toolsAvailable() ? false : "git and ssh-keygen are needed to make signed test tags";
 
 function tree(version: string, lockVersion = version, dependencies: Record<string, string> = {}): Record<string, string> {
@@ -19,7 +20,7 @@ function tree(version: string, lockVersion = version, dependencies: Record<strin
     "test/x.test.ts": "// test\n",
     "scripts/y.ts": "// script\n",
     ".gitattributes": "test/ export-ignore\nscripts/ export-ignore\n.github/ export-ignore\n",
-    "packaging/fedora/nopipeline.spec.in": readFileSync(new URL("../../packaging/fedora/nopipeline.spec.in", import.meta.url), "utf8"),
+    "packaging/fedora/nopipeline.spec.in": readFileSync(fileURLToPath(new URL("../../packaging/fedora/nopipeline.spec.in", import.meta.url)), "utf8"),
   };
 }
 
@@ -28,13 +29,13 @@ const tagged = (name: string, sign: TagSpec["sign"]): TagSpec => ({ name, sign, 
 async function build(
   t: import("node:test").TestContext,
   tags: TagSpec[],
-  opts: { files?: Record<string, string>; tag?: string; env?: Record<string, string>; shell?: string; envFor?: (dir: string) => Promise<Record<string, string>> } = {},
+  opts: { files?: Record<string, string>; tag?: string; signers?: (line: string) => string; gnupg?: boolean; env?: Record<string, string>; shell?: string; envFor?: (dir: string) => Promise<Record<string, string>> } = {},
 ) {
-  const { url, signersLine } = await signedRepo(t, opts.files ?? tree("0.2.0"), tags);
-  const script = scriptWith(signersLine);
+  const { url, signersLine, gnupgHome } = await signedRepo(t, opts.files ?? tree("0.2.0"), tags);
+  const script = scriptWith(opts.signers ? opts.signers(signersLine) : signersLine);
   const result = join(await tempDir(t), "result");
   const args = [url, result, ...(opts.tag ? [opts.tag] : [])];
-  const extra = opts.envFor ? await opts.envFor(await tempDir(t)) : {};
+  const extra = { ...(opts.gnupg ? { GNUPGHOME: gnupgHome } : {}), ...(opts.envFor ? await opts.envFor(await tempDir(t)) : {}) };
   const run = spawnSync(opts.shell ?? "/bin/sh", [script, ...args], { encoding: "utf8", env: { ...process.env, NOPIPELINE_SKIP_AUDIT: "1", ...opts.env, ...extra } });
   const listing = await readdir(result).catch(() => null);
   return { run, result, listing };
@@ -81,6 +82,22 @@ for (const [title, sign] of [["an unsigned tag stops the build", "none"], ["a ta
     assert.equal(listing, null);
   });
 }
+
+const skipGpg = toolsAvailable(["gpg"]) ? false : "gpg is needed to make a PGP-signed test tag";
+test("a tag signed with OpenPGP (key in the builder's keyring) is refused", { skip: skipGpg }, async (t) => {
+  const { run, listing } = await build(t, [{ name: "v0.2.0", sign: "pgp" }], { gnupg: true });
+  assert.notEqual(run.status, 0);
+  assert.match(run.stderr, /^build-source: v0\.2\.0 is not signed by the release key/m);
+  assert.doesNotMatch(run.stderr, /\(\)/);
+  assert.equal(listing, null);
+});
+
+test("a two-line release key value is refused", { skip }, async (t) => {
+  const { run, listing } = await build(t, [{ name: "v0.2.0", sign: "release" }], { signers: (line) => `${line}\nreleases ssh-ed25519 AAAA` });
+  assert.notEqual(run.status, 0);
+  assert.match(run.stderr, /^build-source: the release key line is malformed/m);
+  assert.equal(listing, null);
+});
 
 test("the newest release tag is picked in version order", { skip }, async (t) => {
   const { run, listing } = await build(t, [
@@ -206,6 +223,20 @@ test("an optional dependency does not let NOPIPELINE_SKIP_AUDIT through", { skip
   assert.equal(listing, null);
 });
 
+test("NOPIPELINE_SKIP_AUDIT is refused when npm ci installed something the lockfile check missed (lockfileVersion 1)", { skip }, async (t) => {
+  const files = tree("0.2.0");
+  files["package.json"] = JSON.stringify({ name: "nopipeline", version: "0.2.0", dependencies: { left: "1.0.0" } });
+  files["package-lock.json"] = JSON.stringify({ name: "nopipeline", version: "0.2.0", lockfileVersion: 1, requires: true, dependencies: { left: { version: "1.0.0" } } });
+  const bin = join(await tempDir(t), "bin");
+  await mkdir(bin);
+  await writeFile(join(bin, "npm"), '#!/bin/sh\nif [ "$1" = ci ]; then mkdir -p node_modules/left && echo "{}" >node_modules/left/package.json; fi\n');
+  await chmod(join(bin, "npm"), 0o755);
+  const { run, listing } = await build(t, [{ name: "v0.2.0", sign: "release" }], { files, env: { PATH: `${bin}:${process.env.PATH}` } });
+  assert.notEqual(run.status, 0);
+  assert.match(run.stderr, /^build-source: NOPIPELINE_SKIP_AUDIT is only allowed/m);
+  assert.equal(listing, null);
+});
+
 const dash = spawnSync("which", ["dash"], { stdio: "ignore" }).status === 0;
 test("the script runs under dash", { skip: skip || (dash ? false : "dash is not installed") }, async (t) => {
   const { run, listing } = await build(t, [{ name: "v0.2.0", sign: "release" }], { shell: "dash" });
@@ -253,7 +284,7 @@ if (process.argv[2] === "ci") {
   for (const [key, info] of Object.entries(packages)) {
     if (key === "" || info.dev || info.link || info.optional) continue;
     fs.mkdirSync(key, { recursive: true });
-    fs.writeFileSync(key + "/package.json", "{}");
+    fs.writeFileSync(key + "/package.json", key === "node_modules/a" ? '{"version":"2.1.0"}' : "{}");
   }
 }
 `);
@@ -263,6 +294,6 @@ if (process.argv[2] === "ci") {
   const provides = (await readFile(join(result, "nopipeline.spec"), "utf8")).split("\n").filter((l) => /^Provides:\s+bundled/.test(l));
   assert.equal(provides.length, 3, provides.join("\n"));
   assert.match(provides[0] ?? "", /^Provides:\s+bundled\(nodejs-@scope\/name\) = 1\.2\.3$/);
-  assert.match(provides[1] ?? "", /^Provides:\s+bundled\(nodejs-a\) = 2\.0\.0$/);
+  assert.match(provides[1] ?? "", /^Provides:\s+bundled\(nodejs-a\) = 2\.1\.0$/);
   assert.match(provides[2] ?? "", /^Provides:\s+bundled\(nodejs-b\) = 4\.5\.6$/);
 });

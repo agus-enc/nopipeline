@@ -102,9 +102,14 @@ test("a .release-signers with two lines or the wrong shape is a problem", async 
   }
 });
 
-test("a .release-signers line may carry a comment after the key and blank lines", async (t) => {
-  const { result } = await run(t, {}, { signers: "\nreleases ssh-ed25519 AAAA maintainer key\n\n" });
-  assert.deepEqual(result.problems, []);
+test("a .release-signers with a comment, blank lines or CRLF is a problem (the build script accepts only the one line)", async (t) => {
+  for (const signers of ["releases ssh-ed25519 AAAA maintainer key\n", "\nreleases ssh-ed25519 AAAA\n", "releases ssh-ed25519 AAAA\n\n", "releases ssh-ed25519 AAAA\r\n"]) {
+    const { result } = await run(t, {}, { signers });
+    assert.equal(result.problems.length, 1, JSON.stringify(signers));
+    assert.match(result.problems[0]!, /\.release-signers/);
+  }
+  const { result } = await run(t, {}, { signers: "releases ssh-ed25519 AAAA" });
+  assert.deepEqual(result.problems, [], "no trailing newline is fine");
 });
 
 test("a changed build-source.sh warns with the previous tag, and is not a problem", async (t) => {

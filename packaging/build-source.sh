@@ -37,6 +37,9 @@ cleanup() {
 trap cleanup EXIT
 
 [ "${ALLOWED_SIGNERS#@}" = "$ALLOWED_SIGNERS" ] || fail "the release key was not filled in"
+# grep -q passes when any one line matches, so a value with a line break is refused before it is checked.
+case $ALLOWED_SIGNERS in *"
+"*) fail "the release key line is malformed" ;; esac
 printf '%s\n' "$ALLOWED_SIGNERS" | grep -Eq '^releases ssh-ed25519 [A-Za-z0-9+/=]+$' || fail "the release key line is malformed"
 printf '%s\n' "$ALLOWED_SIGNERS" >"$work/allowed_signers"
 
@@ -50,17 +53,24 @@ if [ -z "$tag" ]; then
   tag=$(gitc tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | grep -E "$semver" | head -n 1 || true)
   [ -n "$tag" ] || fail "no release tag (vX.Y.Z) in $url"
 fi
+case $tag in *"
+"*) fail "the tag name is not a release tag name (vX.Y.Z)" ;; esac
 printf '%s\n' "$tag" | grep -Eq "$semver" || fail "$tag is not a release tag name (vX.Y.Z)"
 version=${tag#v}
 
 [ "$(gitc cat-file -t "refs/tags/$tag" 2>/dev/null || true)" = tag ] ||
   fail "$tag is not signed by the release key (it is not an annotated tag)"
-verify_out=$(gitc -c gpg.format=ssh -c gpg.ssh.program=ssh-keygen -c "gpg.ssh.allowedSignersFile=$work/allowed_signers" verify-tag "$tag" 2>&1) ||
-  fail "$tag is not signed by the release key ($(printf '%s' "$verify_out" | tr '\n' ' '))"
+# git picks the verifier from the signature's armor, not from gpg.format, so an OpenPGP or x509 signature would be checked
+# against the builder's own keyring. Only an SSH signature is accepted, and the other verifiers are disabled.
+gitc cat-file tag "refs/tags/$tag" | grep -q '^-----BEGIN SSH SIGNATURE-----$' ||
+  fail "$tag is not signed by the release key (it carries no SSH signature)"
+verify_out=$(gitc -c gpg.format=ssh -c gpg.ssh.program=ssh-keygen -c gpg.openpgp.program=false -c gpg.x509.program=false \
+  -c "gpg.ssh.allowedSignersFile=$work/allowed_signers" verify-tag "refs/tags/$tag" 2>&1) ||
+  fail "$tag is not signed by the release key${verify_out:+ ($(printf '%s' "$verify_out" | tr '\n' ' '))}"
 # A signed tag object could have been stored under another name; the signed name must be this one.
-[ "$(gitc cat-file tag "$tag" | sed -n 's/^tag //p;/^$/q' | head -n 1)" = "$tag" ] ||
+[ "$(gitc cat-file tag "refs/tags/$tag" | sed -n 's/^tag //p;/^$/q' | head -n 1)" = "$tag" ] ||
   fail "$tag is not signed by the release key (the signed tag has another name)"
-commit=$(gitc rev-parse "$tag^{commit}")
+commit=$(gitc rev-parse "refs/tags/$tag^{commit}")
 
 out="$work/out"
 mkdir -p "$out"
@@ -85,6 +95,13 @@ fi
 if [ "${NOPIPELINE_SKIP_AUDIT:-}" != 1 ]; then
   (cd "$tree" && npm audit signatures >&2) || fail "npm audit signatures failed"
 fi
+if [ "${NOPIPELINE_SKIP_AUDIT:-}" = 1 ]; then
+  # The lockfile check above can be fooled (lockfileVersion 1 has no "packages" key); what npm ci installed cannot.
+  for entry in "$tree"/node_modules/* "$tree"/node_modules/.[!.]*; do
+    [ -e "$entry" ] || continue
+    [ "${entry##*/}" = .package-lock.json ] || fail "NOPIPELINE_SKIP_AUDIT is only allowed for a tree with no dependencies"
+  done
+fi
 mkdir -p "$tree/node_modules"
 
 printf '{ "version": "%s", "commit": "%s" }\n' "$version" "$commit" >"$tree/version.json"
@@ -95,15 +112,18 @@ tar --sort=name --owner=0 --group=0 --numeric-owner -czf "$out/nopipeline-$versi
 template="$tree/packaging/fedora/nopipeline.spec.in"
 if [ -f "$template" ]; then
   date=$(LC_ALL=C TZ=UTC date '+%a %b %d %Y') || fail "cannot read the date"
-  # One Provides line per package that ships: lockfile entries with a version, not dev-only, and (when optional) really
-  # installed by npm ci above. Lockfile order.
+  # One Provides line per package that ships: each lockfile entry whose package.json exists after npm ci (dev-only,
+  # unmatched optional and link entries are not installed, so they drop out). Lockfile order.
   (cd "$tree" && node -e '
     const fs = require("node:fs");
     const packages = require("./package-lock.json").packages ?? {};
     for (const [key, info] of Object.entries(packages)) {
-      if (key === "" || info.dev || !info.version) continue;
-      if (info.optional && !fs.existsSync(`${key}/package.json`)) continue;
-      process.stdout.write(`Provides:       bundled(nodejs-${key.slice(key.lastIndexOf("node_modules/") + 13)}) = ${info.version}\n`);
+      if (!key.startsWith("node_modules/") && !key.includes("/node_modules/")) continue;
+      let installed;
+      try { installed = JSON.parse(fs.readFileSync(`${key}/package.json`, "utf8")); } catch { continue; }
+      const version = typeof installed.version === "string" && installed.version ? installed.version : info.version;
+      if (!version) continue;
+      process.stdout.write(`Provides:       bundled(nodejs-${key.slice(key.lastIndexOf("node_modules/") + 13)}) = ${version}\n`);
     }
   ') >"$work/bundled" || fail "cannot read the bundled packages from the lockfile"
   sed -e "s/@VERSION@/$version/g" -e "s/@DATE@/$date/g" -e "/^@BUNDLED@\$/{r $work/bundled" -e d -e "}" "$template" >"$out/nopipeline.spec" ||
