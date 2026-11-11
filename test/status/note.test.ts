@@ -22,6 +22,7 @@ function outcome(over: { skipped?: { path: string; reason: string }[]; conflicts
 
 const base = (over: Partial<StatusInput>): StatusInput => ({
   kind: "sync",
+  version: "0.2.0 (from /x)",
   at: new Date(2026, 10, 5, 21, 10),
   profile: "config",
   stateDir: "/state",
@@ -29,6 +30,10 @@ const base = (over: Partial<StatusInput>): StatusInput => ({
   report: "Done:\n  3 × x",
   exitCode: 0,
   ...over,
+});
+
+test("the footer names the version", () => {
+  assert.match(renderStatusNote(base({ outcome: outcome({}) })), /^Written by nopipeline 0\.2\.0 \(from \/x\) at \d{4}-\d\d-\d\d \d\d:\d\d for profile /m);
 });
 
 test("a clean sync", () => {

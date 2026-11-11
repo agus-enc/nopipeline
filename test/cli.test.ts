@@ -20,6 +20,13 @@ test("--help prints the usage; unknown commands exit with 2", async () => {
   assert.equal(await main([], () => {}), 2);
 });
 
+test("--version prints the version and exits 0", async () => {
+  const out: string[] = [];
+  assert.equal(await main(["--version"], (line) => out.push(line)), 0);
+  assert.equal(out.length, 1);
+  assert.match(out[0]!, /^nopipeline 0\.2\.0/);
+});
+
 test("a missing config file is reported plainly", async () => {
   await assert.rejects(main(["sync", "--config", "/nonexistent/profile.json"], () => {}), /can't read the config file/);
 });

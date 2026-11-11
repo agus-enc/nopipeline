@@ -12,6 +12,8 @@ export type RunKind = "sync" | "preview" | "first-run" | "failed";
 
 export interface StatusInput {
   kind: RunKind;
+  /** What `versionString` says. */
+  version: string;
   at: Date;
   profile: string;
   stateDir: string;
@@ -130,7 +132,7 @@ export function renderStatusNote(input: StatusInput): string {
   if (input.kind !== "failed") {
     lines.push("", input.kind === "sync" ? "## What changed" : "## Plan", "", "```text", input.report.trimEnd(), "```");
   }
-  lines.push("", "---", `Written by nopipeline at ${stamp(input.at)} for profile ${input.profile}; rewritten on every run (edits to this note are lost). Full output: \`${join(input.stateDir, "last-run.log")}\`.`, "");
+  lines.push("", "---", `Written by nopipeline ${input.version} at ${stamp(input.at)} for profile ${input.profile}; rewritten on every run (edits to this note are lost). Full output: \`${join(input.stateDir, "last-run.log")}\`.`, "");
   return lines.join("\n");
 }
 

@@ -26,6 +26,7 @@ import { notificationFor, reportUrl, type Ending } from "./status/notify.ts";
 import { LockTakenError } from "./state/lock.ts";
 import { runSync } from "./sync.ts";
 import { readOpenTabs, systemObsidian, type ObsidianProbe } from "./vault/inuse.ts";
+import { versionString } from "./version.ts";
 import { writeFlushed, makeFolders } from "./durable.ts";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -36,6 +37,7 @@ const USAGE = `Usage: nopipeline sync [options]
        nopipeline confirm [--config <file>]
        nopipeline launcher install|uninstall [--config <file>]
        nopipeline auto install|uninstall [--config <file>]
+       nopipeline --version
 
 sync: syncs an Obsidian vault with a Notion database, both ways.
 setup: walks you through a profile (token, databases, vault); it only reads Notion.
@@ -50,6 +52,7 @@ Options:
   --allow-mass-trash   allow a run that trashes more notes, or moves more attachments to .trash, than the configured limit
   --notify             end with a desktop notification (for runs started from a launcher or a timer)
   --auto               run only when due (for a timer): skips quietly, never starts a first sync, notifies a new result once; not with --yes, --dry-run or --allow-mass-trash
+  --version            show the version
   --help               show this help`;
 
 /**
@@ -162,7 +165,8 @@ const messageOf = (error: unknown) => (error instanceof Error ? error.message : 
 /** Shared by sync and confirm: one run with the status note, the log, held.json and the optional notification. */
 export async function syncAndReport(config: Config, flags: RunFlags, out: (line: string) => void, deps: MainDeps = {}): Promise<number> {
   const now = deps.now ?? (() => new Date());
-  const lines: string[] = [];
+  const version = await versionString();
+  const lines: string[] = [`nopipeline ${version}`];
   const say = (line: string) => {
     lines.push(line);
     out(line);
@@ -173,10 +177,10 @@ export async function syncAndReport(config: Config, flags: RunFlags, out: (line:
     await writeFlushed(logFile, lines.join("\n"));
   };
   /** Writes the status note unless it is off; a note of the user's at its path is left alone and said so. */
-  const writeNote = async (input: Omit<StatusInput, "notePath" | "profile" | "stateDir" | "at">) => {
+  const writeNote = async (input: Omit<StatusInput, "notePath" | "profile" | "stateDir" | "at" | "version">) => {
     const notePath = config.statusNote ?? null;
     if (notePath === null) return { written: false, taken: null as string | null };
-    const text = renderStatusNote({ ...input, at: now(), profile: config.profile, stateDir: config.stateDir, notePath });
+    const text = renderStatusNote({ ...input, version, at: now(), profile: config.profile, stateDir: config.stateDir, notePath });
     try {
       if ((await writeStatusNote(config.vaultPath, notePath, text)) === "taken") {
         say(`warning: status note not written: ${notePath} is one of your notes; set statusNote in the profile`);
@@ -405,10 +409,15 @@ export async function main(argv: string[], out: (line: string) => void = console
       notify: { type: "boolean", default: false },
       auto: { type: "boolean", default: false },
       help: { type: "boolean", default: false },
+      version: { type: "boolean", default: false },
     },
   });
   if (values.help) {
     out(USAGE);
+    return 0;
+  }
+  if (values.version) {
+    out(`nopipeline ${await versionString()}`);
     return 0;
   }
   if (positionals[0] === "launcher") {
