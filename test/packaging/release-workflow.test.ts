@@ -57,19 +57,80 @@ test("nothing prints a secret: no set -x, curl -v, --verbose", () => {
   assert.doesNotMatch(text, /--trace/);
 });
 
-test("secrets appear only on env: lines, and never on a curl command line", () => {
-  lines.forEach((l, n) => {
-    if (!l.includes("${{ secrets.")) return;
-    assert.match(l, /^\s+[A-Z_]+: \$\{\{ secrets\.[A-Z_]+ \}\}$/, `line ${n + 1} puts a secret somewhere other than a plain env value`);
-    const indent = l.search(/\S/);
-    let k = n - 1;
-    while (k >= 0 && (lines[k]!.trim() === "" || lines[k]!.search(/\S/) >= indent)) k--;
-    assert.equal(lines[k]!.trim(), "env:", `line ${n + 1} is not under env:`);
+/** The nearest line above `n` that is indented less than line `n` (its YAML parent), or null. */
+function parentOf(ls: string[], n: number): { text: string; indent: number } | null {
+  const indent = ls[n]!.search(/\S/);
+  for (let k = n - 1; k >= 0; k--) {
+    if (ls[k]!.trim() === "" || ls[k]!.trim().startsWith("#")) continue;
+    const i = ls[k]!.search(/\S/);
+    if (i < indent) return { text: ls[k]!.trim(), indent: i };
+  }
+  return null;
+}
+const code = (l: string) => !l.trim().startsWith("#");
+
+/** Problems with where secrets appear: only as a plain value under a step's own `env:` (8 spaces; a job-level `env:` would reach every step). */
+function secretProblems(ls: string[]): string[] {
+  const problems: string[] = [];
+  ls.forEach((l, n) => {
+    if (!code(l)) return;
+    if (/^\s*env:/.test(l) && l.search(/\S/) < 8) problems.push(`line ${n + 1}: env: above step level`);
+    if (!/secrets\b/i.test(l)) return;
+    if (!/^ {10}[A-Z_]+: \$\{\{ secrets\.[A-Z_]+ \}\}$/.test(l)) return void problems.push(`line ${n + 1}: a secret outside a step env value: ${l.trim()}`);
+    const parent = parentOf(ls, n);
+    if (parent?.text !== "env:" || parent.indent !== 8) problems.push(`line ${n + 1}: not under a step's env:`);
   });
+  return problems;
+}
+
+/** Problems with `${{ }}` expressions: allowed only as values under `env:` or `with:`, never inside a `run:` script (injection). */
+function injectionProblems(ls: string[]): string[] {
+  const problems: string[] = [];
+  ls.forEach((l, n) => {
+    if (!code(l) || !l.includes("${{")) return;
+    const parent = parentOf(ls, n);
+    if (!/^\s+[A-Za-z_-]+: .*\}\}$/.test(l) || (parent?.text !== "env:" && parent?.text !== "with:")) problems.push(`line ${n + 1}: expression outside env/with: ${l.trim()}`);
+  });
+  return problems;
+}
+
+const yaml = (s: string) => s.split("\n");
+const GOOD = `jobs:
+  publish:
+    steps:
+      - name: x
+        env:
+          OBS_TOKEN: \${{ secrets.OBS_TOKEN }}
+        run: |
+          echo hi
+`;
+
+test("secrets sit only in a step's own env: the real file, and broken copies are caught", () => {
+  assert.deepEqual(secretProblems(lines), []);
+  assert.deepEqual(secretProblems(yaml(GOOD)), []);
+  const jobEnv = `jobs:\n  publish:\n    env:\n      OBS_TOKEN: \${{ secrets.OBS_TOKEN }}\n    steps:\n      - run: x\n`;
+  assert.notEqual(secretProblems(yaml(jobEnv)).length, 0, "job-level env");
+  for (const bad of ["\${{secrets.OBS_TOKEN}}", "\${{ secrets['OBS_TOKEN'] }}", "\${{ toJSON(secrets) }}", "inherit"]) {
+    const broken = GOOD.replace("\${{ secrets.OBS_TOKEN }}", bad).replace("echo hi", bad.includes("secrets") ? "echo hi" : "echo hi\n      - uses: ./x\n        secrets: inherit");
+    assert.notEqual(secretProblems(yaml(broken)).length, 0, bad);
+  }
+  assert.notEqual(secretProblems(yaml(GOOD.replace("echo hi", "echo \${{ secrets.OBS_TOKEN }}"))).length, 0, "in run");
+  assert.notEqual(secretProblems(yaml(GOOD.replace("echo hi", "echo SECRETS"))).length, 0, "case-insensitive word");
+});
+
+test("the real file never puts a secret on a curl command line", () => {
   for (const l of lines.filter((x) => /\bcurl\b/.test(x))) {
     // The secret may go to printf (a shell builtin, so not in the process list) before the pipe, never to curl itself.
     assert.doesNotMatch(l.slice(l.lastIndexOf("|") + 1), /OBS_TOKEN|COPR_WEBHOOK/, "a secret on a curl command line would show in the process list");
   }
+});
+
+test("no ${{ }} expression inside a run: script: the real file, and broken copies are caught", () => {
+  assert.deepEqual(injectionProblems(lines), []);
+  assert.deepEqual(injectionProblems(yaml(GOOD)), []);
+  assert.notEqual(injectionProblems(yaml(GOOD.replace("echo hi", "echo \${{ github.ref_name }}"))).length, 0, "ref_name in run");
+  assert.notEqual(injectionProblems(yaml(GOOD.replace("echo hi", "echo \${{ vars.X }}"))).length, 0, "vars in run");
+  assert.notEqual(injectionProblems(yaml(GOOD.replace("run: |", "run: echo \${{ github.ref_name }}"))).length, 0, "one-line run");
 });
 
 test("the environment is on the publish job only", () => {

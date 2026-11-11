@@ -51,13 +51,17 @@ jobs:
       - name: The tag's .release-signers equals RELEASE_SIGNERS
         env:
           RELEASE_SIGNERS: ${{ vars.RELEASE_SIGNERS }}
+        shell: bash
         run: |
+          # One trailing newline is not part of the key line; the stripped value is what build-source.sh gets below.
+          RELEASE_SIGNERS=${RELEASE_SIGNERS%$'\n'}
           if [ -z "$RELEASE_SIGNERS" ]; then
             echo "::error::The variable RELEASE_SIGNERS of the 'release' environment is empty or missing. Set it to the one line of .release-signers."
             exit 1
           fi
           # Equal ignoring one trailing newline on either side.
           if printf '%s' "$RELEASE_SIGNERS" | cmp -s - .release-signers || printf '%s\n' "$RELEASE_SIGNERS" | cmp -s - .release-signers; then
+            printf '%s' "$RELEASE_SIGNERS" >"$RUNNER_TEMP/release-signers"
             echo "RELEASE_SIGNERS matches .release-signers"
           else
             echo "::error::.release-signers in this tag differs from the RELEASE_SIGNERS variable of the 'release' environment. Fix whichever is wrong; the tag is not released."
@@ -79,11 +83,10 @@ jobs:
       # and refuses anything else, so nothing after this step runs for an unverified tag.
       - name: Verify the tag and build the sources
         env:
-          RELEASE_SIGNERS: ${{ vars.RELEASE_SIGNERS }}
           REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
         run: |
-          sed "s|@RELEASE_SIGNERS@|$RELEASE_SIGNERS|" packaging/build-source.sh >"$RUNNER_TEMP/build-source.sh"
+          sed "s|@RELEASE_SIGNERS@|$(cat "$RUNNER_TEMP/release-signers")|" packaging/build-source.sh >"$RUNNER_TEMP/build-source.sh"
           mkdir "$RUNNER_TEMP/release"
           NOPIPELINE_REPO_KEYS="$RUNNER_TEMP/obs/keys" sh "$RUNNER_TEMP/build-source.sh" "https://github.com/$REPO.git" "$RUNNER_TEMP/release" "$TAG"
           cp "$RUNNER_TEMP/obs/keys/nopipeline-archive-keyring.gpg" "$RUNNER_TEMP/release/"
@@ -111,6 +114,10 @@ jobs:
         env:
           OBS_TOKEN: ${{ secrets.OBS_TOKEN }}
         run: |
+          if [ -z "$OBS_TOKEN" ]; then
+            echo "::error::OBS_TOKEN is not set in the 'release' environment."
+            exit 1
+          fi
           printf 'header = "Authorization: Token %s"\n' "$OBS_TOKEN" | curl -fsS --config - -X POST https://api.opensuse.org/trigger/runservice >/dev/null
           echo "OBS service run triggered"
 
