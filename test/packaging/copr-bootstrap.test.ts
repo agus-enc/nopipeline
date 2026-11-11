@@ -51,13 +51,13 @@ test("the tracked script holds the placeholder once and reads no key from the re
 test("a tag signed with the release key builds into the current folder", { skip }, async (t) => {
   const { run, listing } = await bootstrap(t, [tagged("v0.2.0", "release")]);
   assert.equal(run.status, 0, run.stderr);
-  assert.deepEqual(listing, ["nopipeline-0.2.0.tar.gz", "nopipeline.spec"]);
+  assert.deepEqual(listing, ["nopipeline.spec", "nopipeline.tar.gz", "version"]);
 });
 
 test("the newest tag is built, and a named tag can be given", { skip }, async (t) => {
   const tags = [tagged("v0.9.0", "release"), tagged("v0.10.0", "release")];
-  assert.deepEqual((await bootstrap(t, tags)).listing, ["nopipeline-0.10.0.tar.gz", "nopipeline.spec"]);
-  assert.deepEqual((await bootstrap(t, tags, { args: (url) => [url, "v0.9.0"] })).listing, ["nopipeline-0.9.0.tar.gz", "nopipeline.spec"]);
+  assert.deepEqual((await bootstrap(t, tags)).listing, ["nopipeline.spec", "nopipeline.tar.gz", "version"]);
+  assert.deepEqual((await bootstrap(t, tags, { args: (url) => [url, "v0.9.0"] })).listing, ["nopipeline.spec", "nopipeline.tar.gz", "version"]);
 });
 
 for (const [title, sign] of [["an unsigned tag is refused", "none"], ["a tag signed by another key is refused", "other"]] as const) {
@@ -205,5 +205,5 @@ const dash = spawnSync("which", ["dash"], { stdio: "ignore" }).status === 0;
 test("the script runs under dash", { skip: skip || (dash ? false : "dash is not installed") }, async (t) => {
   const { run, listing } = await bootstrap(t, [tagged("v0.2.0", "release")], { shell: "dash" });
   assert.equal(run.status, 0, run.stderr);
-  assert.deepEqual(listing, ["nopipeline-0.2.0.tar.gz", "nopipeline.spec"]);
+  assert.deepEqual(listing, ["nopipeline.spec", "nopipeline.tar.gz", "version"]);
 });

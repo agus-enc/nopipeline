@@ -38,7 +38,7 @@ ls -l "$work/src"
 
 step "rpmbuild"
 mkdir -p "$work/top/SOURCES"
-cp "$work/src/nopipeline-$version.tar.gz" "$work/top/SOURCES/"
+cp "$work/src/nopipeline.tar.gz" "$work/top/SOURCES/"
 rpmbuild -ba --define "_topdir $work/top" "$work/src/nopipeline.spec"
 rpm_file=$(ls "$work"/top/RPMS/noarch/nopipeline-*.rpm)
 

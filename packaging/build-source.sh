@@ -4,6 +4,10 @@
 #
 # Usage: build-source.sh [<git-url> [<result-dir> [<tag>]]]
 #
+# Output: nopipeline.tar.gz (top folder nopipeline-<version>/), nopipeline.spec and version (one line, X.Y.Z).
+# NOPIPELINE_REPO_KEYS=<dir> (optional) names a folder holding exactly the three repo key files; they are put into the
+# tarball under nopipeline-<version>/keys/. Unset or empty: no keys folder.
+#
 # Only a tag signed by the release key can produce a build. The key is the line below, filled in when this script is
 # pasted into Copr. It is never read from the repository, so a tampered repository cannot change which key is trusted.
 set -eu
@@ -106,8 +110,30 @@ mkdir -p "$tree/node_modules"
 
 printf '{ "version": "%s", "commit": "%s" }\n' "$version" "$commit" >"$tree/version.json"
 
-tar --sort=name --owner=0 --group=0 --numeric-owner -czf "$out/nopipeline-$version.tar.gz" \
+if [ -n "${NOPIPELINE_REPO_KEYS:-}" ]; then
+  keys=$NOPIPELINE_REPO_KEYS
+  [ -d "$keys" ] && [ ! -L "$keys" ] || fail "NOPIPELINE_REPO_KEYS is not a folder: $keys"
+  key_names="nopipeline-archive-keyring.gpg nopipeline.gpg nopipeline-trusted"
+  for entry in "$keys"/* "$keys"/.[!.]* "$keys"/..?*; do
+    [ -e "$entry" ] || [ -L "$entry" ] || continue
+    case " $key_names " in
+      *" ${entry##*/} "*) [ -f "$entry" ] && [ ! -L "$entry" ] || fail "${entry##*/} in the keys folder is not a regular file" ;;
+      *) fail "unexpected entry in the keys folder: ${entry##*/}" ;;
+    esac
+  done
+  for name in $key_names; do
+    [ -f "$keys/$name" ] || fail "the keys folder has no $name"
+  done
+  mkdir "$tree/keys"
+  for name in $key_names; do
+    cp -- "$keys/$name" "$tree/keys/$name" || fail "cannot copy $name"
+  done
+fi
+
+tar --sort=name --owner=0 --group=0 --numeric-owner -czf "$out/nopipeline.tar.gz" \
   -C "$work/tree" "nopipeline-$version" || fail "cannot create the tarball"
+
+printf '%s\n' "$version" >"$out/version"
 
 template="$tree/packaging/fedora/nopipeline.spec.in"
 if [ -f "$template" ]; then

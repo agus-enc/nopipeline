@@ -94,9 +94,9 @@ Both scripts repeat the verification lines (the bootstrap must be self-contained
 - checks `package.json` says the tag's version;
 - builds from `git archive` of the tag, so files marked `export-ignore` in `.gitattributes` (`test/`, `scripts/`, `.github/`) are left out;
 - runs `npm ci --omit=dev --ignore-scripts` and `npm audit signatures`;
-- writes `version.json` (version and commit), `nopipeline-<version>.tar.gz` and `nopipeline.spec` (from `packaging/fedora/nopipeline.spec.in`, with the version, date and one `Provides: bundled(nodejs-…)` line per shipped dependency).
+- writes `version.json` (version and commit) into the tarball, and `nopipeline.tar.gz`, `version` (one line) and `nopipeline.spec` (from `packaging/fedora/nopipeline.spec.in`, with the version, date and one `Provides: bundled(nodejs-…)` line per shipped dependency). If `NOPIPELINE_REPO_KEYS=<dir>` is set, the three repo key files in it are added to the tarball under `keys/` (any other entry fails the build). The rpm needs no Node to build and has no `%check`; the container checks run the installed package.
 
-It (and the bootstrap) call these tools: `git`, `ssh-keygen` (through git's SSH signature check), `node`, `npm`, `tar`, `sed`, `grep`, `head`, `tr`, `date`, `env`, `mktemp`, `realpath`, and `sh`, `rm`, `mkdir` and `mv`. It trusts the `PATH` it runs with, which is fine on Copr, whose build chroot controls `PATH`; do not run it with a `PATH` you do not control.
+It (and the bootstrap) call these tools: `git`, `ssh-keygen` (through git's SSH signature check), `node`, `npm`, `tar`, `sed`, `grep`, `head`, `tr`, `date`, `env`, `mktemp`, `realpath`, and `sh`, `rm`, `mkdir`, `cp` and `mv`. It trusts the `PATH` it runs with, which is fine on Copr, whose build chroot controls `PATH`; do not run it with a `PATH` you do not control.
 
 It takes optional arguments (`[<git-url> [<result-dir> [<tag>]]]`). On Copr it runs with none, so the defaults apply: `https://github.com/agus-enc/nopipeline.git`, the current folder, and the newest tag.
 

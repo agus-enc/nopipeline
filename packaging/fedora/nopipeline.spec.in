@@ -6,10 +6,9 @@ Summary:        Two-way sync between an Obsidian vault and a Notion database
 
 License:        MIT
 URL:            https://github.com/agus-enc/nopipeline
-Source0:        nopipeline-%{version}.tar.gz
+Source0:        nopipeline.tar.gz
 BuildArch:      noarch
 
-BuildRequires:  nodejs >= 1:22.22
 Requires:       nodejs >= 1:22.22
 Recommends:     libnotify
 Recommends:     xdg-utils
@@ -20,7 +19,7 @@ nopipeline keeps an Obsidian vault and a Notion database in sync in both
 directions, and keeps the links between notes working.
 
 %prep
-%autosetup
+%autosetup -n nopipeline-%{version}
 
 %build
 
@@ -32,9 +31,6 @@ cat > %{buildroot}/usr/bin/nopipeline <<'LAUNCHER'
 exec /usr/bin/node /usr/share/nopipeline/src/cli.ts "$@"
 LAUNCHER
 chmod 755 %{buildroot}/usr/bin/nopipeline
-
-%check
-/usr/bin/node %{buildroot}/usr/share/nopipeline/src/cli.ts --version | grep -qx "nopipeline %{version}"
 
 %files
 %license LICENSE node_modules/@notionhq/client/LICENSE node_modules/node-diff3/LICENSE.md

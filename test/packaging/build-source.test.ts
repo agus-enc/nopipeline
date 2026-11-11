@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmod, mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
@@ -44,22 +44,85 @@ async function build(
 test("a tag signed with the release key builds", { skip }, async (t) => {
   const { run, result, listing } = await build(t, [{ name: "v0.2.0", sign: "release" }]);
   assert.equal(run.status, 0, run.stderr);
-  assert.deepEqual(listing, ["nopipeline-0.2.0.tar.gz", "nopipeline.spec"]);
+  assert.deepEqual(listing, ["nopipeline.spec", "nopipeline.tar.gz", "version"]);
   const spec = await readFile(join(result, "nopipeline.spec"), "utf8");
   assert.match(spec, /^Version:\s+0\.2\.0$/m);
   assert.doesNotMatch(spec, /@[A-Z]+@/, "no placeholder is left in the spec");
   assert.match(spec, /^\* (Mon|Tue|Wed|Thu|Fri|Sat|Sun) [A-Z][a-z]{2} \d\d \d{4} nopipeline <noreply@github\.com> - 0\.2\.0-1$/m);
+  assert.match(spec, /^Source0:\s+nopipeline\.tar\.gz$/m);
+  assert.doesNotMatch(spec, /^BuildRequires/m, "the rpm needs no Node to build");
+  assert.doesNotMatch(spec, /^%check/m);
+  assert.equal(await readFile(join(result, "version"), "utf8"), "0.2.0\n");
   assert.doesNotMatch(spec, /^Provides:\s+bundled/m, "a tree with no dependencies bundles nothing");
-  const names = spawnSync("tar", ["-tzf", join(result, "nopipeline-0.2.0.tar.gz")], { encoding: "utf8" }).stdout.split("\n");
+  const names = spawnSync("tar", ["-tzf", join(result, "nopipeline.tar.gz")], { encoding: "utf8" }).stdout.split("\n");
   assert.ok(names.includes("nopipeline-0.2.0/src/cli.ts"));
   assert.ok(names.includes("nopipeline-0.2.0/version.json"));
   assert.ok(names.some((n) => n.startsWith("nopipeline-0.2.0/node_modules/")));
   assert.ok(!names.some((n) => /nopipeline-0\.2\.0\/(test|scripts)\//.test(n)));
   const extract = await tempDir(t);
-  spawnSync("tar", ["-xzf", join(result, "nopipeline-0.2.0.tar.gz"), "-C", extract]);
+  spawnSync("tar", ["-xzf", join(result, "nopipeline.tar.gz"), "-C", extract]);
   const info = JSON.parse(await readFile(join(extract, "nopipeline-0.2.0/version.json"), "utf8")) as { version: string; commit: string };
   assert.equal(info.version, "0.2.0");
   assert.match(info.commit, /^[0-9a-f]{40}$/);
+});
+
+const keyNames = ["nopipeline-archive-keyring.gpg", "nopipeline.gpg", "nopipeline-trusted"];
+async function keysDir(t: import("node:test").TestContext, names = keyNames): Promise<string> {
+  const dir = join(await tempDir(t), "keys");
+  await mkdir(dir);
+  for (const name of names) await writeFile(join(dir, name), `dummy ${name}\n`);
+  return dir;
+}
+
+test("repo keys are baked into the tarball", { skip }, async (t) => {
+  const keys = await keysDir(t);
+  const { run, result, listing } = await build(t, [{ name: "v0.2.0", sign: "release" }], { env: { NOPIPELINE_REPO_KEYS: keys } });
+  assert.equal(run.status, 0, run.stderr);
+  assert.deepEqual(listing, ["nopipeline.spec", "nopipeline.tar.gz", "version"]);
+  const names = spawnSync("tar", ["-tzf", join(result, "nopipeline.tar.gz")], { encoding: "utf8" }).stdout.split("\n");
+  for (const name of keyNames) assert.ok(names.includes(`nopipeline-0.2.0/keys/${name}`), name);
+  const extract = await tempDir(t);
+  spawnSync("tar", ["-xzf", join(result, "nopipeline.tar.gz"), "-C", extract]);
+  assert.equal(await readFile(join(extract, "nopipeline-0.2.0/keys/nopipeline.gpg"), "utf8"), "dummy nopipeline.gpg\n");
+});
+
+test("without NOPIPELINE_REPO_KEYS the tarball has no keys folder", { skip }, async (t) => {
+  const { run, result } = await build(t, [{ name: "v0.2.0", sign: "release" }], { env: { NOPIPELINE_REPO_KEYS: "" } });
+  assert.equal(run.status, 0, run.stderr);
+  const names = spawnSync("tar", ["-tzf", join(result, "nopipeline.tar.gz")], { encoding: "utf8" }).stdout.split("\n");
+  assert.ok(!names.some((n) => n.includes("/keys")));
+});
+
+test("an unexpected file in the keys folder stops the build", { skip }, async (t) => {
+  const keys = await keysDir(t, [...keyNames, "extra.txt"]);
+  const { run, listing } = await build(t, [{ name: "v0.2.0", sign: "release" }], { env: { NOPIPELINE_REPO_KEYS: keys } });
+  assert.notEqual(run.status, 0);
+  assert.match(run.stderr, /^build-source: .*extra\.txt/m);
+  assert.equal(listing, null);
+});
+
+test("a missing key file stops the build", { skip }, async (t) => {
+  const keys = await keysDir(t, keyNames.slice(0, 2));
+  const { run, listing } = await build(t, [{ name: "v0.2.0", sign: "release" }], { env: { NOPIPELINE_REPO_KEYS: keys } });
+  assert.notEqual(run.status, 0);
+  assert.match(run.stderr, /^build-source: .*nopipeline-trusted/m);
+  assert.equal(listing, null);
+});
+
+test("a symlink or a subfolder in the keys folder stops the build", { skip }, async (t) => {
+  const link = await keysDir(t);
+  await rm(join(link, "nopipeline.gpg"));
+  await symlink(join(link, "nopipeline-trusted"), join(link, "nopipeline.gpg"));
+  const a = await build(t, [{ name: "v0.2.0", sign: "release" }], { env: { NOPIPELINE_REPO_KEYS: link } });
+  assert.notEqual(a.run.status, 0);
+  assert.match(a.run.stderr, /^build-source: /m);
+  assert.equal(a.listing, null);
+  const sub = await keysDir(t);
+  await mkdir(join(sub, "sub"));
+  const b = await build(t, [{ name: "v0.2.0", sign: "release" }], { env: { NOPIPELINE_REPO_KEYS: sub } });
+  assert.notEqual(b.run.status, 0);
+  assert.match(b.run.stderr, /^build-source: /m);
+  assert.equal(b.listing, null);
 });
 
 test("the build records the tag's commit", { skip }, async (t) => {
@@ -69,7 +132,7 @@ test("the build records the tag's commit", { skip }, async (t) => {
   assert.equal(run.status, 0, run.stderr);
   const head = spawnSync("git", ["-C", url, "rev-parse", "v0.2.0^{commit}"], { encoding: "utf8" }).stdout.trim();
   const extract = await tempDir(t);
-  spawnSync("tar", ["-xzf", join(result, "nopipeline-0.2.0.tar.gz"), "-C", extract]);
+  spawnSync("tar", ["-xzf", join(result, "nopipeline.tar.gz"), "-C", extract]);
   const info = JSON.parse(await readFile(join(extract, "nopipeline-0.2.0/version.json"), "utf8")) as { commit: string };
   assert.equal(info.commit, head);
 });
@@ -107,13 +170,13 @@ test("the newest release tag is picked in version order", { skip }, async (t) =>
     tagged("test", "none"),
   ]);
   assert.equal(run.status, 0, run.stderr);
-  assert.deepEqual(listing, ["nopipeline-0.10.0.tar.gz", "nopipeline.spec"]);
+  assert.deepEqual(listing, ["nopipeline.spec", "nopipeline.tar.gz", "version"]);
 });
 
 test("a tag can be named", { skip }, async (t) => {
   const { run, listing } = await build(t, [tagged("v0.9.0", "release"), tagged("v0.10.0", "release")], { tag: "v0.9.0" });
   assert.equal(run.status, 0, run.stderr);
-  assert.deepEqual(listing, ["nopipeline-0.9.0.tar.gz", "nopipeline.spec"]);
+  assert.deepEqual(listing, ["nopipeline.spec", "nopipeline.tar.gz", "version"]);
 });
 
 test("a tag name that is not a release tag is refused", { skip }, async (t) => {
@@ -248,7 +311,7 @@ const dash = spawnSync("which", ["dash"], { stdio: "ignore" }).status === 0;
 test("the script runs under dash", { skip: skip || (dash ? false : "dash is not installed") }, async (t) => {
   const { run, listing } = await build(t, [{ name: "v0.2.0", sign: "release" }], { shell: "dash" });
   assert.equal(run.status, 0, run.stderr);
-  assert.deepEqual(listing, ["nopipeline-0.2.0.tar.gz", "nopipeline.spec"]);
+  assert.deepEqual(listing, ["nopipeline.spec", "nopipeline.tar.gz", "version"]);
 });
 
 test("with no arguments the script clones the default repository into the current folder", { skip }, async (t) => {
