@@ -38,8 +38,7 @@ async function bootstrap(
 }
 
 test("the filled script is under Copr's 4 kB limit", async () => {
-  const { signersLine } = { signersLine: real(".release-signers").trim() };
-  const filled = real("packaging/copr-bootstrap.sh").replace("@RELEASE_SIGNERS@", signersLine);
+  const filled = real("packaging/copr-bootstrap.sh").replace("@RELEASE_SIGNERS@", real(".release-signers").trim());
   assert.ok(Buffer.byteLength(filled) < 4096, `${Buffer.byteLength(filled)} bytes`);
 });
 
@@ -85,6 +84,13 @@ async function fakeSigner(dir: string): Promise<string> {
   return program;
 }
 
+test("GIT_* variables in the environment are dropped (GIT_TRACE writes nothing)", { skip }, async (t) => {
+  const trace = join(await tempDir(t), "trace");
+  const { run } = await bootstrap(t, [tagged("v0.2.0", "release")], { env: { GIT_TRACE: trace } });
+  assert.equal(run.status, 0, run.stderr);
+  await assert.rejects(stat(trace), "git was not told to trace");
+});
+
 test("git config in the environment cannot replace the signature verifier", { skip }, async (t) => {
   const { run, listing } = await bootstrap(t, [tagged("v0.2.0", "other")], {
     envFor: async (dir) => ({ GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "gpg.ssh.program", GIT_CONFIG_VALUE_0: await fakeSigner(dir) }),
@@ -125,17 +131,41 @@ test("a tampered build-source.sh on an unsigned newer tag is never run", { skip 
   await assert.rejects(stat(marker), "the tampered script did not run");
 });
 
-test("the build-source.sh that runs is the one in the signed tag, with the bootstrap's own key", { skip }, async (t) => {
-  // A signed tag whose build-source.sh is replaced by a script that reports its key and arguments: it runs, with the bootstrap's key filled in.
+test("the build-source.sh that runs is the one in the signed tag, with the bootstrap's own key and verified clone", { skip }, async (t) => {
+  // A signed tag whose build-source.sh is replaced by a probe: it runs with the bootstrap's key filled in, the verified bare clone (not the url), the current folder and the tag.
   const out = join(await tempDir(t), "out");
-  const probe = `#!/bin/sh\nALLOWED_SIGNERS='@RELEASE_SIGNERS@'\necho "$ALLOWED_SIGNERS|$#|$2" >${out}\ntouch nopipeline.spec\n`;
-  const { run, url } = await bootstrap(t, [tagged("v0.2.0", "release", probe)]);
+  const probe = `#!/bin/sh\nALLOWED_SIGNERS='@RELEASE_SIGNERS@'\necho "$ALLOWED_SIGNERS|$#|$1|$2|$3" >${out}\ntouch nopipeline.spec\n`;
+  const { signersLine, url } = await signedRepo(t, tree("0.0.0"), [tagged("v0.2.0", "release", probe)]);
+  const cwd = await tempDir(t);
+  const run = spawnSync("/bin/sh", [scriptWith(signersLine, "copr-bootstrap.sh"), url], { cwd, encoding: "utf8" });
   assert.equal(run.status, 0, run.stderr);
-  void url;
-  const [key, count, dir] = readFileSync(out, "utf8").trim().split("|");
-  assert.match(key!, /^releases ssh-ed25519 [A-Za-z0-9+/=]+$/);
+  const [key, count, source, dir, tagArg] = readFileSync(out, "utf8").trim().split("|");
+  assert.equal(key, signersLine);
   assert.equal(count, "3");
+  assert.notEqual(source, url, "build-source.sh gets the verified clone, not the url");
+  assert.match(source!, /repo\.git$/);
   assert.equal(dir, ".");
+  assert.equal(tagArg, "v0.2.0");
+});
+
+test("when build-source.sh fails its own message is the only one", { skip }, async (t) => {
+  const failing = "#!/bin/sh\nALLOWED_SIGNERS='@RELEASE_SIGNERS@'\necho 'build-source: boom' >&2\nexit 3\n";
+  const { run, listing } = await bootstrap(t, [tagged("v0.2.0", "release", failing)]);
+  assert.equal(run.status, 3);
+  assert.equal(run.stderr.trim(), "build-source: boom");
+  assert.deepEqual(listing, []);
+});
+
+test("a failing mktemp is reported with the script's prefix", { skip }, async (t) => {
+  const dir = await tempDir(t);
+  const bin = join(dir, "bin");
+  await mkdir(bin);
+  await writeFile(join(bin, "mktemp"), "#!/bin/sh\nexit 1\n");
+  await chmod(join(bin, "mktemp"), 0o755);
+  const { signersLine } = await signedRepo(t, tree("0.0.0"), [tagged("v0.2.0", "release")]);
+  const run = spawnSync("/bin/sh", [scriptWith(signersLine, "copr-bootstrap.sh")], { cwd: dir, encoding: "utf8", env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } });
+  assert.notEqual(run.status, 0);
+  assert.match(run.stderr, /^copr-bootstrap: /m);
 });
 
 test("with no arguments the script clones the default repository", { skip }, async (t) => {
@@ -153,12 +183,16 @@ test("with no arguments the script clones the default repository", { skip }, asy
   assert.deepEqual(await readdir(cwd), []);
 });
 
-test("both scripts verify with the same git flags and tag regex", () => {
-  const flags = (text: string) => [...text.matchAll(/ -c "?(gpg\.[a-z0-9.]+=(?:false\b|ssh-keygen|ssh\b)|gpg\.ssh\.allowedSignersFile=)/g)].map((m) => m[1]!).sort();
-  const a = flags(real("packaging/build-source.sh"));
-  const b = flags(real("packaging/copr-bootstrap.sh"));
-  assert.equal(a.length, 5, a.join(" "));
-  assert.ok(a.includes("gpg.ssh.allowedSignersFile="));
+test("both scripts carry the same tag verification block and tag regex", () => {
+  const block = (text: string) => {
+    const lines = text.split("\n");
+    const from = lines.findIndex((l) => l.includes('cat-file -t "refs/tags/'));
+    const to = lines.findIndex((l) => l.includes("the signed tag has another name"));
+    return lines.slice(from, to + 1).filter((l) => !/^\s*#/.test(l)).map((l) => l.trim().replace(/\s+/g, " ")).filter(Boolean);
+  };
+  const a = block(real("packaging/build-source.sh"));
+  const b = block(real("packaging/copr-bootstrap.sh"));
+  assert.ok(a.length > 5, "found the block in build-source.sh");
   assert.deepEqual(b, a);
   const regex = (text: string) => text.match(/^semver='([^']+)'$/m)?.[1];
   assert.equal(regex(real("packaging/copr-bootstrap.sh")), "^v[0-9]+\\.[0-9]+\\.[0-9]+$");

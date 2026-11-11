@@ -13,13 +13,14 @@ export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null GIT_CONFIG_NOSYST
 
 reported=
 fail() { reported=1; printf 'copr-bootstrap: %s\n' "$*" >&2; exit 1; }
-work=$(mktemp -d)
+work=
 cleanup() {
   status=$?
-  rm -rf "$work"
+  [ -z "$work" ] || rm -rf "$work"
   [ "$status" -eq 0 ] || [ -n "$reported" ] || printf 'copr-bootstrap: failed unexpectedly (exit %s)\n' "$status" >&2
 }
 trap cleanup EXIT
+work=$(mktemp -d) || fail "cannot create a temporary folder"
 
 [ "${ALLOWED_SIGNERS#@}" = "$ALLOWED_SIGNERS" ] || fail "the release key was not filled in"
 case $ALLOWED_SIGNERS in *"
@@ -53,4 +54,6 @@ verify_out=$(gitc -c gpg.format=ssh -c gpg.ssh.program=ssh-keygen -c gpg.openpgp
 # The verified commit's own build-source.sh does the rest (and verifies the tag again with the same key).
 gitc show "refs/tags/$tag^{commit}:packaging/build-source.sh" >"$work/build-source.sh.in" || fail "$tag has no packaging/build-source.sh"
 sed "s|^ALLOWED_SIGNERS=.*|ALLOWED_SIGNERS='$ALLOWED_SIGNERS'|" "$work/build-source.sh.in" >"$work/build-source.sh"
-sh "$work/build-source.sh" "$url" . "$tag"
+# Its own message (and exit status) is the result. It gets the verified clone, so it builds the objects checked above.
+reported=1
+sh "$work/build-source.sh" "$work/repo.git" . "$tag"

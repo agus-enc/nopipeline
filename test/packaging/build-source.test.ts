@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmod, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
@@ -188,6 +188,13 @@ async function fakeSigner(dir: string): Promise<string> {
   await chmod(program, 0o755);
   return program;
 }
+
+test("GIT_* variables in the environment are dropped (GIT_TRACE writes nothing)", { skip }, async (t) => {
+  const trace = join(await tempDir(t), "trace");
+  const { run } = await build(t, [{ name: "v0.2.0", sign: "release" }], { env: { GIT_TRACE: trace } });
+  assert.equal(run.status, 0, run.stderr);
+  await assert.rejects(stat(trace), "git was not told to trace");
+});
 
 test("git config in the environment cannot replace the signature verifier (GIT_CONFIG_COUNT)", { skip }, async (t) => {
   const { run, listing } = await build(t, [{ name: "v0.2.0", sign: "other" }], {
