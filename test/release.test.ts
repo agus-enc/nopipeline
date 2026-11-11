@@ -326,12 +326,15 @@ test("--notes prints the notes for package.json's version without git; a missing
   await writeFile(join(root, "package.json"), JSON.stringify({ version: "0.9.0" }));
   let status = 0;
   let stdout = "";
+  let stderr = "";
   try {
-    execFileSync("node", [script, "--notes"], { cwd: root, encoding: "utf8" });
+    execFileSync("node", [script, "--notes"], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
   } catch (error) {
     status = (error as { status: number }).status;
     stdout = (error as { stdout: string }).stdout;
+    stderr = (error as { stderr: string }).stderr;
   }
   assert.equal(status, 1);
-  assert.match(stdout, /^problem: CHANGELOG\.md has no section for 0\.9\.0/);
+  assert.equal(stdout, "");
+  assert.match(stderr, /^problem: CHANGELOG\.md has no section for 0\.9\.0/);
 });

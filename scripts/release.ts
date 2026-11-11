@@ -162,7 +162,7 @@ async function printNotes(): Promise<void> {
   const { version } = JSON.parse(await readFile("package.json", "utf8")) as { version: string };
   const notes = releaseNotes(version, await readFile("CHANGELOG.md", "utf8"));
   if (notes === null) {
-    console.log(`problem: CHANGELOG.md has no section for ${version} (a heading like '## ${version} — 2026-11-07')`);
+    console.error(`problem: CHANGELOG.md has no section for ${version} (a heading like '## ${version} — 2026-11-07')`);
     process.exitCode = 1;
     return;
   }
