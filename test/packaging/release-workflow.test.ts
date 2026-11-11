@@ -36,6 +36,13 @@ test("the tag pattern, read as GitHub's filter pattern, accepts releases and ref
   for (const bad of ["v1.2.3-rc1", "v1.2", "release-1", "v1.2.3.4", "1.2.3", "v1.2.x", "v1.2.3/x"]) assert.doesNotMatch(bad, re);
 });
 
+test("releases are serialised: one concurrency group at the top, never cancelling a running release", () => {
+  const i = lines.findIndex((l) => l === "concurrency:");
+  assert.notEqual(i, -1, "a top-level concurrency: block");
+  assert.deepEqual(lines.slice(i, i + 3), ["concurrency:", "  group: release", "  cancel-in-progress: false"]);
+  assert.equal(lines.filter((l) => /^\s*concurrency:/.test(l)).length, 1);
+});
+
 test("permissions are empty at the top", () => {
   assert.ok(lines.includes("permissions: {}"));
   assert.equal(lines.filter((l) => /^permissions:/.test(l)).length, 1);

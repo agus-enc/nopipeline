@@ -1,6 +1,10 @@
 #!/bin/sh
-# Publishes the GitHub release for a tag: writes SHA256SUMS over the files in <out-dir>, then creates the release, or,
-# when it already exists (a re-run of a failed workflow), uploads the files to it again with --clobber.
+# Publishes the GitHub release for a tag: writes SHA256SUMS over the files in <out-dir>, then creates the release.
+# When it already exists (a re-run of a failed workflow) nothing is uploaded or changed: published assets are never replaced
+# (with immutable releases on they could not be anyway), and the caller carries on with the OBS and Copr triggers.
+# `gh release create` with files creates a draft, uploads every file and then publishes
+# (https://github.com/cli/cli/blob/trunk/pkg/cmd/release/create/create.go), the order GitHub recommends for immutable releases
+# (https://docs.github.com/en/code-security/supply-chain-security/understanding-your-software-supply-chain/immutable-releases).
 #
 # Usage: publish-release.sh <out-dir> <tag>
 #
@@ -46,7 +50,7 @@ for f in "$out"/*; do
 done
 
 if gh release view "$tag" >/dev/null 2>&1; then
-  gh release upload "$tag" "$@" --clobber
+  printf 'publish-release: release %s already exists; its files are left as they are.\n' "$tag"
 else
   printf '%s\n' "$notes" | gh release create "$tag" --verify-tag --title "nopipeline ${tag#v}" --notes-file - "$@"
 fi

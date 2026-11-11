@@ -9,7 +9,12 @@ doc = debian/nopipeline/usr/share/doc/nopipeline
 
 override_dh_auto_configure override_dh_auto_build override_dh_auto_test override_dh_auto_clean:
 
+# The files come from one release download; if version.json (inside the tarball) and debian/changelog (a separate file) name
+# different versions, a mixed download (two releases racing on "latest") would be labelled with the wrong version: fail instead.
 override_dh_auto_install:
+	v=$$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' version.json); \
+	c=$$(dpkg-parsechangelog -SVersion | sed 's/-[^-]*$$//'); \
+	[ -n "$$v" ] && [ "$$v" = "$$c" ] || { echo "debian.rules: version.json says '$$v' but debian/changelog says '$$c'; the sources are from two releases" >&2; exit 1; }
 	install -d debian/nopipeline/usr/share/nopipeline debian/nopipeline/usr/bin \
 	  debian/nopipeline/usr/share/keyrings $(doc)
 	cp -a src node_modules package.json package-lock.json version.json debian/nopipeline/usr/share/nopipeline/

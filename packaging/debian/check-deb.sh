@@ -88,6 +88,13 @@ dpkg-buildpackage -us -uc -b
 mkdir -p /out
 cp /build/nopipeline_*_all.deb /out/
 deb=$(ls /out/nopipeline_*_all.deb)
+# A changelog from another release must stop the build (debian.rules compares it with version.json). The check runs
+# before anything is installed, so nothing needs cleaning up afterwards.
+cp debian/changelog /tmp/changelog.keep
+sed -i '1s/^nopipeline ([^)]*)/nopipeline (0.0.1-1)/' debian/changelog
+if debian/rules override_dh_auto_install >/tmp/mixed.log 2>&1; then echo "check-deb: a mixed version was not refused" >&2; exit 1; fi
+grep -q 'sources are from two releases' /tmp/mixed.log || { echo "check-deb: unexpected failure for a mixed version" >&2; cat /tmp/mixed.log >&2; exit 1; }
+cp /tmp/changelog.keep debian/changelog
 dpkg-deb -I "$deb"
 dpkg-deb -c "$deb"
 dpkg-deb -f "$deb" Depends | grep -qx 'nodejs (>= 22.22)' || { echo "check-deb: unexpected Depends" >&2; exit 1; }
@@ -145,9 +152,15 @@ want="nopipeline: this Node.js ($(node --version)) cannot run TypeScript. Instal
 status=0
 nopipeline --version >/tmp/out 2>/tmp/err || status=$?
 cat /tmp/err
-[ "$status" = 1 ] || { echo "check-deb: expected exit 1 with the archive Node, got $status" >&2; exit 1; }
-[ ! -s /tmp/out ] || { echo "check-deb: unexpected stdout" >&2; exit 1; }
-[ "$(cat /tmp/err)" = "$want" ] || { echo "check-deb: unexpected message" >&2; exit 1; }
+if [ "$status" = 0 ]; then
+  # Ubuntu's Node can run TypeScript now: the package works with the archive's own Node, which is better than the message.
+  echo "check-deb: NOTE: the archive Node in this image supports TypeScript; the 'cannot run TypeScript' message is not testable here"
+  [ -s /tmp/out ] || { echo "check-deb: nopipeline --version printed nothing" >&2; exit 1; }
+else
+  [ "$status" = 1 ] || { echo "check-deb: expected exit 1 with the archive Node, got $status" >&2; exit 1; }
+  [ ! -s /tmp/out ] || { echo "check-deb: unexpected stdout" >&2; exit 1; }
+  [ "$(cat /tmp/err)" = "$want" ] || { echo "check-deb: unexpected message" >&2; exit 1; }
+fi
 INNER
 
 mkdir "$work/debs"

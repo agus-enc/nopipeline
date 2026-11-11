@@ -61,17 +61,14 @@ for (const shell of ["sh", "dash"]) {
     assert.equal((await readFile(`${s.log}.stdin`, "utf8")).trim(), "the notes");
   });
 
-  test(`${shell}: an existing release gets its files uploaded with --clobber and is not created again`, { skip }, async (t) => {
+  test(`${shell}: an existing release is left alone: no upload, no --clobber, no create, exit 0 with a notice`, { skip }, async (t) => {
     const s = await setup(t);
     const r = run(shell, s, [s.out, "v1.2.3"], "0");
     assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /v1\.2\.3 already exists/);
     const all = await calls(s.log);
-    assert.equal(all.filter((l) => l.includes("[create]")).length, 0);
-    const up = all.filter((l) => l.startsWith("gh [release] [upload]"));
-    assert.equal(up.length, 1);
-    assert.match(up[0]!, /\[v1\.2\.3\]/);
-    assert.match(up[0]!, /\[--clobber\]/);
-    assert.ok(up[0]!.includes(`${s.out}/SHA256SUMS]`));
+    assert.deepEqual(all.filter((l) => !l.startsWith("gh [release] [view]")), []);
+    assert.ok(!(await readFile(s.log, "utf8")).includes("--clobber"));
   });
 
   test(`${shell}: SHA256SUMS lists every other file with its hash, and running again gives the same file`, { skip }, async (t) => {

@@ -11,6 +11,12 @@ on:
 
 permissions: {}
 
+# Two tags close together would race on releases/latest while OBS downloads the files one by one, so one release at a time;
+# a running release is never cancelled (that could stop it between publishing and the OBS trigger).
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
   # The same checks as check.yml, on the tag. No secrets, no environment, read-only token.
   build:
@@ -98,7 +104,7 @@ jobs:
       - name: Build and install the Arch package (Arch container)
         run: sh packaging/arch/check-arch.sh --from "$RUNNER_TEMP/release"
 
-      # Safe to re-run: an existing release gets the files again (--clobber) instead of failing or being created twice.
+      # Safe to re-run: an existing release is left as it is (published files are never replaced) instead of failing or being created twice.
       - name: Publish the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
