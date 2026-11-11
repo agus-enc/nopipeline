@@ -16,16 +16,9 @@ In each one choose `•••` → Connections and add your connection. A databa
 
 ## 3. Install
 
-On Fedora, from Copr:
+Install the package for your distribution from the OBS repository: Fedora, Debian/Ubuntu (which needs Node.js from NodeSource first) and Arch are covered, with the exact commands, in the [README](../README.md#install-and-set-up). Existing Copr users switch there too.
 
-```bash
-sudo dnf copr enable chipp/nopipeline
-sudo dnf install nopipeline
-```
-
-If `dnf copr` is not available, install the plugin first (`sudo dnf install dnf5-plugins` on current Fedora); see [How to enable a Copr repo](https://docs.copr.fedorainfracloud.org/how_to_enable_repo.html).
-
-This puts a `nopipeline` command on your path. Updates come with `sudo dnf upgrade` (see [Updating](../README.md#updating)).
+This puts a `nopipeline` command on your path. Updates come with the system's normal upgrade (see [Updating](../README.md#updating)).
 
 ### Other Linux: from source
 

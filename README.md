@@ -26,16 +26,57 @@ The tool never creates or changes a database in Notion. It links the ones you al
 2. **Connect it to your databases.** Open the notes database (and the projects database, if you use one). In each, choose `•••` → Connections and add your connection.
 3. **Install.**
 
-   On Fedora, from Copr:
+   The packages come from a repository on the [openSUSE Build Service](https://openbuildservice.org/) (OBS). Add it once; after that the system's normal upgrade brings new versions. In the commands below, `home:<user>:nopipeline` stands for the OBS project of this package (the release notes of each version show the exact commands for it).
+
+   **Fedora (43, 44).** Fedora's own Node.js is enough:
 
    ```bash
-   sudo dnf copr enable chipp/nopipeline
+   sudo dnf config-manager addrepo --from-repofile=https://download.opensuse.org/repositories/home:/<user>:/nopipeline/Fedora_$(rpm -E %fedora)/home:<user>:nopipeline.repo
    sudo dnf install nopipeline
    ```
 
-   If `dnf copr` is not available, install the plugin first (`sudo dnf install dnf5-plugins` on current Fedora); see [How to enable a Copr repo](https://docs.copr.fedorainfracloud.org/how_to_enable_repo.html).
+   If `dnf config-manager` is not available, install the plugin first (`sudo dnf install dnf5-plugins` on current Fedora).
 
-   Other Linux: from source. The project's `.npmrc` blocks install scripts and pins exact versions:
+   *Already using the Copr repository?* Switch to this one and turn Copr off, so only one of the two is enabled (both ship the same package):
+
+   ```bash
+   sudo dnf copr disable chipp/nopipeline
+   ```
+
+   Then add the OBS repository as above; `sudo dnf upgrade` takes the OBS build. Copr keeps building for now, so nothing breaks if you wait.
+
+   **Debian, Ubuntu and derivatives.** The Node.js that Debian and Ubuntu ship can't run nopipeline: it is built without TypeScript support. First install Node.js 22.22 or newer from [NodeSource](https://github.com/nodesource/distributions) and follow their instructions. The `nopipeline` command tells you if it finds the wrong Node. Then add the repository. Use `Debian_13` as `<dist>`; on Ubuntu use `xUbuntu_24.04` or `xUbuntu_26.04`. For Linux Mint, Pop!_OS and other Ubuntu derivatives use the repository of the Ubuntu release they are based on; for other Debian derivatives use `Debian_13`. The package is architecture-independent and only needs `nodejs (>= 22.22)`.
+
+   ```bash
+   dist=Debian_13
+   curl -fsSL https://download.opensuse.org/repositories/home:/<user>:/nopipeline/$dist/Release.key | sudo gpg --dearmor --yes -o /usr/share/keyrings/nopipeline-archive-keyring.gpg
+   sudo tee /etc/apt/sources.list.d/nopipeline.sources <<EOF
+   Types: deb
+   URIs: https://download.opensuse.org/repositories/home:/<user>:/nopipeline/$dist/
+   Suites: ./
+   Signed-By: /usr/share/keyrings/nopipeline-archive-keyring.gpg
+   EOF
+   sudo apt update && sudo apt install nopipeline
+   ```
+
+   **Arch and derivatives.** Arch's own `nodejs` works (so does `nodejs-lts-jod`). Add this to `/etc/pacman.conf`:
+
+   ```ini
+   [nopipeline]
+   Server = https://download.opensuse.org/repositories/home:/<user>:/nopipeline/Arch/$arch
+   ```
+
+   then import the repository key, trust it, and install. `<fingerprint>` is the 40 hex characters in [`packaging/obs-signing-key.fingerprint`](packaging/obs-signing-key.fingerprint); after the import, `sudo pacman-key --finger <fingerprint>` must find that key before you sign it:
+
+   ```bash
+   curl -fsSL "https://build.opensuse.org/projects/home:<user>:nopipeline/signing_keys/download?kind=gpg" | sudo pacman-key --add -
+   sudo pacman-key --lsign-key <fingerprint>
+   sudo pacman -Syu nopipeline
+   ```
+
+   The package does not add the repository by itself, and it keeps the repository key up to date. Removing the Arch package leaves the key trusted; remove it with `sudo pacman-key --delete <fingerprint>`.
+
+   Other Linux, or to hack on it: from source. The project's `.npmrc` blocks install scripts and pins exact versions:
 
    ```bash
    git clone https://github.com/agus-enc/nopipeline.git
@@ -80,17 +121,28 @@ From a clone, `node src/cli.ts sync …` and `npm run sync -- …` do the same. 
 
 `nopipeline --version` shows the version you have. The changes in each version are in [CHANGELOG.md](CHANGELOG.md).
 
-On Fedora, updates come with the system:
+With a package, updates come with the system's normal upgrade: `sudo dnf upgrade`, `sudo apt update && sudo apt upgrade`, or `sudo pacman -Syu`.
 
-```bash
-sudo dnf upgrade
-```
+To go back to an older version: `sudo dnf downgrade nopipeline` (while the repository still has it), `sudo apt install nopipeline=<version>` (see `apt list -a nopipeline`), or reinstall an older package from the pacman cache with `sudo pacman -U`. The changelog says if going back past a version is unsafe.
 
-To go back, `sudo dnf downgrade nopipeline` installs the previous build, while Copr still has it. Copr keeps one build of each package indefinitely and [deletes the other builds after 14 days](https://docs.copr.fedorainfracloud.org/user_documentation.html), so a downgrade works for about two weeks after an update. The changelog says if going back past a version is unsafe.
-
-Before you remove the package with `dnf remove nopipeline`, remove what it set up: run `nopipeline auto uninstall` and `nopipeline launcher uninstall`, once for each profile you installed them for (add `--config <file>` for a profile other than the default). The package can't do that for you, because those files live in your home folder.
+Before you remove the package (`dnf remove`, `apt remove` or `pacman -R`), remove what it set up: run `nopipeline auto uninstall` and `nopipeline launcher uninstall`, once for each profile you installed them for (add `--config <file>` for a profile other than the default). The package can't do that for you, because those files live in your home folder.
 
 From a clone, `git pull`, then `npm ci` and `npm audit signatures` again. The launcher and timer point at the clone, so they need no reinstall unless you move the folder.
+
+## If the repository key has expired
+
+The repository is signed with a key that OBS renews about every two years, and each new package version carries the renewed key, so a system that keeps upgrading never notices. If you did not upgrade for a long time, the update fails with an expired-key error (`EXPKEYSIG` from apt, a signature error from dnf or pacman). Refresh the key once, then upgrade as usual:
+
+- **Debian, Ubuntu:** download the key again (same `dist` as above):
+
+  ```bash
+  curl -fsSL https://download.opensuse.org/repositories/home:/<user>:/nopipeline/$dist/Release.key | sudo gpg --dearmor --yes -o /usr/share/keyrings/nopipeline-archive-keyring.gpg
+  ```
+
+- **Fedora:** `sudo dnf clean all`, then upgrade again; dnf asks to import the repository key. If it still says the key expired, remove the old copy first (`rpm -qa 'gpg-pubkey*'` lists them; `sudo rpm -e <name>` removes one) and upgrade again.
+- **Arch:** `curl -fsSL "https://build.opensuse.org/projects/home:<user>:nopipeline/signing_keys/download?kind=gpg" | sudo pacman-key --add -`
+
+These commands follow how each tool is documented; they have not been tried against a real expired key yet.
 
 ## Documentation
 
@@ -102,7 +154,7 @@ From a clone, `git pull`, then `npm ci` and `npm audit signatures` again. The la
 - [Folders and projects](docs/folders-and-projects.md): how vault folders and Notion projects follow each other.
 - [Attachments](docs/attachments.md): images, PDFs, audio, video and other files, and how to rename the attachment folder.
 - [Troubleshooting](docs/troubleshooting.md): why a note is skipped, what to do, and known limitations.
-- [Development](docs/development.md): checks, probes and live tests, releases, and the Fedora package.
+- [Development](docs/development.md): checks, probes and live tests, releases, and the packages.
 
 ## License
 
