@@ -1,18 +1,36 @@
 // Checks that the repo is ready to release, then prints the commands to run.
 // It only prints: it never tags, pushes or builds.
 import { execFile } from "node:child_process";
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { readFile, stat } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join, relative, isAbsolute } from "node:path";
 import { promisify } from "node:util";
 
 type Git = (args: string[]) => Promise<string>;
 
 const SCRIPT = "packaging/build-source.sh";
-const COPR = "copr-cli build-package chipp/nopipeline --name nopipeline";
+const WEBHOOK_PREFIX = "https://copr.fedorainfracloud.org/webhooks/custom/";
+
+/** The webhook file (a secret URL): where it is, and the home folder used to print its path with `~`. */
+export type Webhook = { path: string; home: string };
+
+/** `$XDG_CONFIG_HOME/nopipeline/copr-webhook`, default `~/.config/nopipeline/copr-webhook`. */
+export function webhookLocation(env: Record<string, string | undefined>, home: string): Webhook {
+  const base = env.XDG_CONFIG_HOME !== undefined && env.XDG_CONFIG_HOME !== "" ? env.XDG_CONFIG_HOME : join(home, ".config");
+  return { path: join(base, "nopipeline", "copr-webhook"), home };
+}
+
+/** The path as typed in a shell: `~/...` under home, else absolute (single-quoted when it has unusual characters). */
+function shellPath({ path, home }: Webhook): string {
+  const rel = relative(home, path);
+  if (rel !== "" && !rel.startsWith("..") && !isAbsolute(rel)) return `~/${rel}`;
+  return /^[\w./@+-]+$/.test(path) ? path : `'${path.replaceAll("'", "'\\''")}'`;
+}
 
 export async function checkRelease(
   git: Git,
   root: string,
+  webhook: Webhook,
 ): Promise<{ problems: string[]; version: string; commands: string[]; warnings: string[] }> {
   const problems: string[] = [];
   const warnings: string[] = [];
@@ -59,6 +77,24 @@ export async function checkRelease(
     problems.push(".release-signers must hold exactly one line: releases ssh-ed25519 <public key>");
   }
 
+  // Checks the file only; its content is never put in a message (it is a secret).
+  let mode: number | null = null;
+  try {
+    mode = (await stat(webhook.path)).mode;
+  } catch {
+    problems.push(`${webhook.path}: put the project's custom webhook URL there (Copr → Settings → Integrations), mode 600`);
+  }
+  if (mode !== null) {
+    if ((mode & 0o077) !== 0) problems.push(`${webhook.path} is readable by others; chmod 600 it`);
+    let text = "";
+    try {
+      text = (await readFile(webhook.path, "utf8")).trim();
+    } catch {
+      // an unreadable file cannot hold a valid URL; reported below
+    }
+    if (!text.startsWith(WEBHOOK_PREFIX) || /\s/.test(text)) problems.push(`${webhook.path} doesn't look like a Copr custom webhook URL`);
+  }
+
   const tags = ((await safe(["tag", "--list", "v[0-9]*.[0-9]*.[0-9]*", "--sort=-v:refname"])) ?? "")
     .split("\n")
     .map((l) => l.trim())
@@ -74,7 +110,7 @@ export async function checkRelease(
     }
   }
 
-  return { problems, version, commands: [`git tag -s ${tag} -m "nopipeline ${version}"`, `git push origin ${tag}`, COPR], warnings };
+  return { problems, version, commands: [`git tag -s ${tag} -m "nopipeline ${version}"`, `git push origin ${tag}`, `curl -fsS -X POST "$(cat ${shellPath(webhook)})"`], warnings };
 }
 
 /** Fetches origin's branches and tags; returns a problem line when that fails. */
@@ -96,7 +132,7 @@ async function main(): Promise<void> {
     process.exitCode = 1;
     return;
   }
-  const { problems, version, commands, warnings } = await checkRelease(git, process.cwd());
+  const { problems, version, commands, warnings } = await checkRelease(git, process.cwd(), webhookLocation(process.env, homedir()));
   for (const w of warnings) console.log(`warning: ${w}`);
   if (problems.length > 0) {
     for (const p of problems) console.log(`problem: ${p}`);

@@ -1,13 +1,16 @@
 import assert from "node:assert/strict";
-import { writeFile } from "node:fs/promises";
+import { chmod, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
-import { checkRelease, fetchOrigin } from "../scripts/release.ts";
+import { checkRelease, fetchOrigin, webhookLocation } from "../scripts/release.ts";
 import { tempDir } from "./helpers/tmp.ts";
 
 const SIGNERS = "releases ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample\n";
 const TAGS = "git tag --list v[0-9]*.[0-9]*.[0-9]* --sort=-v:refname";
 const DIFF = "git diff --quiet v0.1.0 HEAD -- packaging/build-source.sh";
+
+const URL_TEXT = "https://copr.fedorainfracloud.org/webhooks/custom/12345/00000000-aaaa-bbbb-cccc-SECRETSECRET/nopipeline/";
+const CURL = 'curl -fsS -X POST "$(cat ~/.config/nopipeline/copr-webhook)"';
 
 const happy: Record<string, string | Error> = {
   "git status --porcelain": "",
@@ -20,11 +23,19 @@ const happy: Record<string, string | Error> = {
   [DIFF]: "",
 };
 
-async function run(t: import("node:test").TestContext, over: Record<string, string | Error> = {}, opts: { signers?: string | null; changelog?: string; version?: string } = {}) {
+async function run(t: import("node:test").TestContext, over: Record<string, string | Error> = {}, opts: { signers?: string | null; changelog?: string; version?: string; webhook?: string | null; mode?: number; xdg?: boolean } = {}) {
   const root = await tempDir(t);
   await writeFile(join(root, "package.json"), JSON.stringify({ version: opts.version ?? "0.2.0" }));
   await writeFile(join(root, "CHANGELOG.md"), opts.changelog ?? "# Changelog\n\n## 0.2.0 — 2026-11-07\n\n- x\n\n## 0.1.0 — 2026-10-01\n");
   if (opts.signers !== null) await writeFile(join(root, ".release-signers"), opts.signers ?? SIGNERS);
+  const home = join(root, "home");
+  const cfg = opts.xdg ? join(root, "xdg", "nopipeline") : join(home, ".config", "nopipeline");
+  const webhookPath = join(cfg, "copr-webhook");
+  if (opts.webhook !== null) {
+    await mkdir(cfg, { recursive: true });
+    await writeFile(webhookPath, opts.webhook ?? `${URL_TEXT}\n`);
+    await chmod(webhookPath, opts.mode ?? 0o600);
+  }
   const table = { ...happy, ...over };
   const calls: string[] = [];
   const git = async (args: string[]): Promise<string> => {
@@ -35,7 +46,7 @@ async function run(t: import("node:test").TestContext, over: Record<string, stri
     if (v instanceof Error) throw v;
     return v;
   };
-  return { result: await checkRelease(git, root), calls };
+  return { result: await checkRelease(git, root, { path: webhookPath, home }), calls, root };
 }
 
 test("the happy path returns the three commands for 0.2.0", async (t) => {
@@ -43,7 +54,46 @@ test("the happy path returns the three commands for 0.2.0", async (t) => {
   assert.deepEqual(result.problems, []);
   assert.deepEqual(result.warnings, []);
   assert.equal(result.version, "0.2.0");
-  assert.deepEqual(result.commands, ['git tag -s v0.2.0 -m "nopipeline 0.2.0"', "git push origin v0.2.0", "copr-cli build-package chipp/nopipeline --name nopipeline"]);
+  assert.deepEqual(result.commands, ['git tag -s v0.2.0 -m "nopipeline 0.2.0"', "git push origin v0.2.0", CURL]);
+});
+
+test("a webhook file outside HOME is printed with its absolute path", async (t) => {
+  const { result, root } = await run(t, {}, { xdg: true });
+  assert.deepEqual(result.problems, []);
+  assert.equal(result.commands[2], `curl -fsS -X POST "$(cat ${join(root, "xdg", "nopipeline", "copr-webhook")})"`);
+});
+
+test("a missing webhook file is a problem that says where to put the URL", async (t) => {
+  const { result } = await run(t, {}, { webhook: null });
+  assert.equal(result.problems.length, 1);
+  assert.match(result.problems[0]!, /copr-webhook: put the project's custom webhook URL there \(Copr → Settings → Integrations\), mode 600/);
+});
+
+test("a webhook file readable by group or others is a problem, 400 and 600 are fine", async (t) => {
+  for (const mode of [0o640, 0o644, 0o604, 0o660]) {
+    const { result } = await run(t, {}, { mode });
+    assert.equal(result.problems.length, 1, mode.toString(8));
+    assert.match(result.problems[0]!, /is readable by others; chmod 600 it/);
+  }
+  const { result } = await run(t, {}, { mode: 0o400 });
+  assert.deepEqual(result.problems, []);
+});
+
+test("a webhook file that is not a Copr custom webhook URL is a problem", async (t) => {
+  for (const webhook of ["", "\n", "http://copr.fedorainfracloud.org/webhooks/custom/1/x/", "https://example.com/webhooks/custom/1/x/", "token=abc"]) {
+    const { result } = await run(t, {}, { webhook });
+    assert.equal(result.problems.length, 1, JSON.stringify(webhook));
+    assert.match(result.problems[0]!, /doesn't look like a Copr custom webhook URL/);
+  }
+});
+
+test("the webhook URL never appears in problems or commands, even when the file is malformed", async (t) => {
+  const secret = "SUPERSECRETVALUE";
+  for (const [webhook, mode] of [[`${URL_TEXT}\n`, 0o600], [`${URL_TEXT}\n`, 0o644], [`https://evil.example/${secret}\n`, 0o600], [`${secret}\nsecond line ${URL_TEXT}\n`, 0o600]] as const) {
+    const { result } = await run(t, {}, { webhook, mode });
+    const out = JSON.stringify([result.problems, result.commands, result.warnings]);
+    assert.ok(!out.includes(secret) && !out.includes("SECRETSECRET") && !out.includes("12345"), JSON.stringify(webhook));
+  }
 });
 
 test("a dirty working tree is a problem", async (t) => {
@@ -173,4 +223,10 @@ test("no previous tag means no warning and no diff", async (t) => {
 test("the checker only reads: no tag, push or fetch call", async (t) => {
   const { calls } = await run(t);
   for (const c of calls) assert.doesNotMatch(c, /^git (tag -s|push|fetch)/);
+});
+
+test("webhookLocation uses XDG_CONFIG_HOME when set, else ~/.config", () => {
+  assert.equal(webhookLocation({ XDG_CONFIG_HOME: "/x/cfg" }, "/h").path, "/x/cfg/nopipeline/copr-webhook");
+  assert.equal(webhookLocation({}, "/h").path, "/h/.config/nopipeline/copr-webhook");
+  assert.equal(webhookLocation({ XDG_CONFIG_HOME: "" }, "/h").path, "/h/.config/nopipeline/copr-webhook");
 });

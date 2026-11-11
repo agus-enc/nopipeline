@@ -54,8 +54,8 @@ The newest heading must equal `version` in `package.json`; a test checks it.
    node scripts/release.ts
    ```
 
-   It checks that the tree is clean, you are on `main` and equal to `origin/main`, `package.json` and the changelog agree, the tag doesn't exist, and `.release-signers` holds one valid line. It prints the problems it finds, or the commands to run. It never tags, pushes or builds.
-4. Run the printed commands, in order: `git tag -s vX.Y.Z -m "nopipeline X.Y.Z"`, `git push origin vX.Y.Z`, then `copr-cli build-package chipp/nopipeline --name nopipeline`.
+   It checks that the tree is clean, you are on `main` and equal to `origin/main`, `package.json` and the changelog agree, the tag doesn't exist, `.release-signers` holds one valid line, and the Copr webhook file exists, is private and looks like a Copr webhook URL (it never prints the URL). It prints the problems it finds, or the commands to run. It never tags, pushes or builds.
+4. Run the printed commands, in order: `git tag -s vX.Y.Z -m "nopipeline X.Y.Z"`, `git push origin vX.Y.Z`, then `curl -fsS -X POST "$(cat ~/.config/nopipeline/copr-webhook)"`, which starts the Copr build through the project's custom webhook (the printed command has your real path, which follows `XDG_CONFIG_HOME`). The build always takes the newest signed tag, whatever the request says.
 
 It also warns when `packaging/build-source.sh` changed since the previous tag. If so, update the script stored in Copr before the build (see below).
 
@@ -98,6 +98,23 @@ sed "s|@RELEASE_SIGNERS@|$(cat .release-signers)|" packaging/build-source.sh > "
 grep -c '@RELEASE_SIGNERS@' "$copy"    # prints 0
 grep -c "^ALLOWED_SIGNERS='releases ssh-ed25519 " "$copy"    # prints 1 (an empty .release-signers must not pass)
 ```
+
+### The build webhook
+
+Builds are started with the package's custom webhook, not `copr-cli`, because the webhook URL does not expire (Copr API tokens do, every 180 days). Store the URL once: in Copr open the project, then Settings, then Integrations, and copy the "Custom webhook" URL for the package `nopipeline`. Then:
+
+```bash
+mkdir -p ~/.config/nopipeline
+install -m 600 /dev/null ~/.config/nopipeline/copr-webhook
+```
+
+and paste the URL into that file with an editor (use `$XDG_CONFIG_HOME` instead of `~/.config` if you set it). The URL is a secret: anyone who has it can start builds, though only of signed tags. Never commit it or paste it into a chat or log. If Copr regenerates the URL on the Integrations page, update the file. See [Copr's custom webhook docs](https://docs.copr.fedorainfracloud.org/custom_source_method.html).
+
+### The Copr API token
+
+The API token (`~/.config/copr`, from <https://copr.fedorainfracloud.org/api/>) is needed only to change the stored script (`copr-cli edit-package-custom`) or to add the package the first time. It expires every 180 days; renew it on that page.
+
+### Updating the stored script
 
 To update the stored script, upload the new copy (flags as in the Copr docs; see `copr-cli edit-package-custom --help`):
 
