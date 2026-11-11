@@ -26,7 +26,7 @@ The tool never creates or changes a database in Notion. It links the ones you al
 2. **Connect it to your databases.** Open the notes database (and the projects database, if you use one). In each, choose `•••` → Connections and add your connection.
 3. **Install.**
 
-   The packages come from a repository on the [openSUSE Build Service](https://openbuildservice.org/) (OBS). Add it once; after that the system's normal upgrade brings new versions. In the commands below, `home:<user>:nopipeline` stands for the OBS project of this package (the release notes of each version show the exact commands for it).
+   The packages come from a repository on the [openSUSE Build Service](https://openbuildservice.org/) (OBS). Add it once; after that the system's normal upgrade brings new versions. The commands below use the OBS project `home:<user>:nopipeline`; the release notes of each version show the same commands.
 
    **Fedora (43, 44).** Fedora's own Node.js is enough:
 
@@ -45,7 +45,7 @@ The tool never creates or changes a database in Notion. It links the ones you al
 
    Then add the OBS repository as above; `sudo dnf upgrade` takes the OBS build. Copr keeps building for now, so nothing breaks if you wait.
 
-   **Debian, Ubuntu and derivatives.** The Node.js that Debian and Ubuntu ship can't run nopipeline: it is built without TypeScript support. First install Node.js 22.22 or newer from [NodeSource](https://github.com/nodesource/distributions) and follow their instructions. The `nopipeline` command tells you if it finds the wrong Node. Then add the repository. Use `Debian_13` as `<dist>`; on Ubuntu use `xUbuntu_24.04` or `xUbuntu_26.04`. For Linux Mint, Pop!_OS and other Ubuntu derivatives use the repository of the Ubuntu release they are based on; for other Debian derivatives use `Debian_13`. The package is architecture-independent and only needs `nodejs (>= 22.22)`.
+   **Debian, Ubuntu and derivatives.** The Node.js that Debian and Ubuntu ship can't run nopipeline: it is built without TypeScript support. First install Node.js 22.22 or newer from [NodeSource](https://github.com/nodesource/distributions) and follow their instructions. The `nopipeline` command tells you if it finds the wrong Node. Then add the repository. Set `dist` in the first command to `Debian_13`; on Ubuntu use `xUbuntu_24.04` or `xUbuntu_26.04`. For Linux Mint, Pop!_OS and other Ubuntu derivatives use the repository of the Ubuntu release they are based on; for other Debian derivatives use `Debian_13`. The package is architecture-independent and only needs `nodejs (>= 22.22)`.
 
    ```bash
    dist=Debian_13
@@ -59,10 +59,10 @@ The tool never creates or changes a database in Notion. It links the ones you al
    sudo apt update && sudo apt install nopipeline
    ```
 
-   **Arch and derivatives.** Arch's own `nodejs` works (so does `nodejs-lts-jod`). Add this to `/etc/pacman.conf`:
+   **Arch and derivatives.** Arch's own `nodejs` works. Add this to `/etc/pacman.conf`:
 
    ```ini
-   [nopipeline]
+   [home_<user>_nopipeline_Arch]
    Server = https://download.opensuse.org/repositories/home:/<user>:/nopipeline/Arch/$arch
    ```
 
@@ -133,7 +133,7 @@ From a clone, `git pull`, then `npm ci` and `npm audit signatures` again. The la
 
 The repository is signed with a key that OBS renews about every two years, and each new package version carries the renewed key, so a system that keeps upgrading never notices. If you did not upgrade for a long time, the update fails with an expired-key error (`EXPKEYSIG` from apt, a signature error from dnf or pacman). Refresh the key once, then upgrade as usual:
 
-- **Debian, Ubuntu:** download the key again (same `dist` as above):
+- **Debian, Ubuntu:** download the key again (with the same `dist` as above):
 
   ```bash
   curl -fsSL https://download.opensuse.org/repositories/home:/<user>:/nopipeline/$dist/Release.key | sudo gpg --dearmor --yes -o /usr/share/keyrings/nopipeline-archive-keyring.gpg

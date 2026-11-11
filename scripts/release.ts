@@ -106,7 +106,7 @@ export function releaseNotes(version: string, changelog: string, project: string
     "Add this to `/etc/pacman.conf`, then import the repo key and trust it:",
     "",
     `${fence}ini`,
-    `[${project.replaceAll(":", "_")}]`,
+    `[${project.replaceAll(":", "_")}_Arch]`,
     `Server = ${repo("Arch")}$arch`,
     fence,
     "",
@@ -175,6 +175,9 @@ export async function checkRelease(
   }
 
   const { project, fingerprint } = await readObs(root, problems);
+  // The README's install commands name the OBS project; they must not go out with the placeholder.
+  const readme = await readFile(join(root, "README.md"), "utf8").catch(() => "");
+  if (readme.includes("home:<user>")) problems.push("README.md still has the placeholder home:<user> in its install commands (put the OBS project there)");
 
   const tags = ((await safe(["tag", "--list", "v[0-9]*.[0-9]*.[0-9]*", "--sort=-v:refname"])) ?? "")
     .split("\n")

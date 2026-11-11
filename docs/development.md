@@ -50,7 +50,7 @@ The same line is pasted into the Copr package's script and into the `release` en
 
 ### The changelog rule
 
-`CHANGELOG.md` has one section per version, newest first, headed `## X.Y.Z — YYYY-MM-DD`. Write what a user notices, in short lines. If a version changes the format of anything stored (profile, state files, status note), say so, and say when `dnf downgrade` past this version is unsafe.
+`CHANGELOG.md` has one section per version, newest first, headed `## X.Y.Z — YYYY-MM-DD`. Write what a user notices, in short lines. If a version changes the format of anything stored (profile, state files, status note), say so, and say when going back to an older package past this version is unsafe.
 
 The newest heading must equal `version` in `package.json`; a test checks it.
 
@@ -117,6 +117,8 @@ Whoever controls the GitHub account can publish packages: they can change these 
 
 ### OBS project files (`packaging/obs/`)
 
+The Arch repository's database is named `<project with ':' replaced by '_'>_<repository>.db` on OBS (for example `home_manuelschneid3r_Arch.db` in [this listing](https://download.opensuse.org/repositories/home:/manuelschneid3r/Arch/x86_64/)), and pacman fetches `<section>.db`, so the `pacman.conf` section is `[<project with ':' → '_'>_Arch]` (README and release notes).
+
 `project` holds the OBS project name (one line; the only place it is written). `_service` lists one `download_url` per file `build-source.sh` renders, each from `https://github.com/@REPO@/releases/latest/download/<name>`; `@REPO@` (`owner/repo`) is filled in when the file is uploaded to OBS, so a rehearsal repo works unchanged. `project-meta.xml.in` (with `@PROJECT@`) and `package-meta.xml` are the OBS metadata.
 
 - `download_url` takes `protocol`, `host`, `port`, `path` (required), `filename`, `url` and a few switches, and `path` has no leading slash because the script builds `protocol://host/path` itself ([service definition](https://github.com/openSUSE/obs-service-download_url/blob/master/download_url.service), [script](https://github.com/openSUSE/obs-service-download_url/blob/master/download_url)). The script runs `wget`, which follows redirects by default (GitHub redirects `releases/latest/download/...` to its CDN); I read this from the source and did not run it against OBS, so the rehearsal is the first real test.
@@ -169,7 +171,7 @@ Done once by the owner, who types every credential. Nothing here is done by scri
    curl -fsSL "https://build.opensuse.org/projects/home:<user>:nopipeline/signing_keys/download?kind=gpg" | gpg --show-keys --with-colons | awk -F: '/^fpr:/ {print $10; exit}'
    ```
 
-   and compare it with the signing key page of the project on build.opensuse.org before you commit it. Also replace `<user>` in the README's install commands with the real OBS project (`home:<user>:nopipeline`).
+   and compare it with the signing key page of the project on build.opensuse.org before you commit it. Also replace every `home:<user>` and `home_<user>` in the README's install commands with the real OBS project; `node scripts/release.ts` reports a problem while `home:<user>` is still in `README.md`.
 
 `node scripts/release.ts` refuses to print the release commands while the two placeholders are still there.
 

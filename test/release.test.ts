@@ -61,6 +61,19 @@ test("the placeholder OBS project is a problem and no key can be fetched", async
   assert.equal(result.project, null);
 });
 
+test("a README that still has the home:<user> placeholder is a problem", async (t) => {
+  const { result, root } = await run(t);
+  assert.deepEqual(result.problems, []);
+  await writeFile(join(root, "README.md"), "Server = https://download.opensuse.org/repositories/home:/<user>:/nopipeline/Arch/$arch\nhome:<user>:nopipeline\n");
+  const again = await checkRelease(async (args) => {
+    const v = ({ ...happy })[`git ${args.join(" ")}`];
+    if (v === undefined || v instanceof Error) throw new Error("unexpected");
+    return v;
+  }, root);
+  assert.equal(again.problems.length, 1);
+  assert.match(again.problems[0]!, /README\.md/);
+});
+
 test("the all-zero key fingerprint is a problem", async (t) => {
   const { result } = await run(t, {}, { fingerprint: "0".repeat(40) + "\n" });
   assert.equal(result.problems.length, 1);
@@ -278,7 +291,7 @@ test("releaseNotes install blocks come from the OBS project", () => {
   assert.ok(notes.includes("Signed-By: /usr/share/keyrings/nopipeline-archive-keyring.gpg"));
   assert.ok(notes.includes(`${base}/Debian_13/Release.key`));
   assert.ok(notes.includes("xUbuntu_24.04"));
-  assert.ok(notes.includes("[home_a_nopipeline]"));
+  assert.ok(notes.includes("```ini\n[home_a_nopipeline_Arch]\nServer = "));
   assert.ok(notes.includes(`Server = ${base}/Arch/$arch`));
   assert.ok(notes.includes(`sudo pacman-key --lsign-key ${FPR}`));
   assert.ok(notes.includes("https://github.com/nodesource/distributions"));
