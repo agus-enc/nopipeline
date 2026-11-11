@@ -1,0 +1,127 @@
+name: release
+
+# A signed tag vX.Y.Z builds the packages and publishes the release.
+# GitHub's filter patterns (https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#filter-pattern-cheat-sheet):
+# `+` is one or more of the preceding character, [] is a character class and `.` is literal (their own example
+# `v[12].[0-9]+.[0-9]+` matches v1.10.1), and a pattern must match the whole tag name, so v1.2.3-rc1, v1.2 and release-1 start nothing.
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+permissions: {}
+
+jobs:
+  # The same checks as check.yml, on the tag. No secrets, no environment, read-only token.
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      # Actions are pinned to a commit, not a tag, so a moved tag can't change what runs.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22.22"
+      # .npmrc turns off install scripts; the lockfile pins every version.
+      - run: npm ci
+      - run: npm audit signatures
+      - run: npm run check
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    # The environment holds RELEASE_SIGNERS (variable) and OBS_TOKEN, COPR_WEBHOOK (secrets); it only allows v*.*.* tags.
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22.22"
+
+      # The trusted release key comes from the environment, never from the tag's tree; the tag's copy must equal it.
+      - name: The tag's .release-signers equals RELEASE_SIGNERS
+        env:
+          RELEASE_SIGNERS: ${{ vars.RELEASE_SIGNERS }}
+        run: |
+          if [ -z "$RELEASE_SIGNERS" ]; then
+            echo "::error::The variable RELEASE_SIGNERS of the 'release' environment is empty or missing. Set it to the one line of .release-signers."
+            exit 1
+          fi
+          # Equal ignoring one trailing newline on either side.
+          if printf '%s' "$RELEASE_SIGNERS" | cmp -s - .release-signers || printf '%s\n' "$RELEASE_SIGNERS" | cmp -s - .release-signers; then
+            echo "RELEASE_SIGNERS matches .release-signers"
+          else
+            echo "::error::.release-signers in this tag differs from the RELEASE_SIGNERS variable of the 'release' environment. Fix whichever is wrong; the tag is not released."
+            exit 1
+          fi
+
+      # The pinned key is the OBS repo key's fingerprint; obs-key.sh ships only that primary key and fails on anything else.
+      - name: Fetch and check the OBS repo key
+        run: |
+          project=$(cat packaging/obs/project)
+          sh packaging/obs-key.sh --project "$project" "$(cat packaging/obs-signing-key.fingerprint)" "$RUNNER_TEMP/obs"
+          expires=$(cat "$RUNNER_TEMP/obs/expires")
+          now=$(date +%s)
+          if [ "$expires" -ne 0 ] && [ $((expires - now)) -lt $((60 * 86400)) ]; then
+            echo "::notice::The OBS repo key expires on $(date -u -d "@$expires" +%Y-%m-%d) (within 60 days): extend it in OBS, then release again."
+          fi
+
+      # build-source.sh verifies the tag (annotated, SSH-signed by the key below, name and package.json version agree)
+      # and refuses anything else, so nothing after this step runs for an unverified tag.
+      - name: Verify the tag and build the sources
+        env:
+          RELEASE_SIGNERS: ${{ vars.RELEASE_SIGNERS }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          sed "s|@RELEASE_SIGNERS@|$RELEASE_SIGNERS|" packaging/build-source.sh >"$RUNNER_TEMP/build-source.sh"
+          mkdir "$RUNNER_TEMP/release"
+          NOPIPELINE_REPO_KEYS="$RUNNER_TEMP/obs/keys" sh "$RUNNER_TEMP/build-source.sh" "https://github.com/$REPO.git" "$RUNNER_TEMP/release" "$TAG"
+          cp "$RUNNER_TEMP/obs/keys/nopipeline-archive-keyring.gpg" "$RUNNER_TEMP/release/"
+          ls -l "$RUNNER_TEMP/release"
+
+      # The same scripts as the manual checks, on exactly the files that are published.
+      - name: Build and install the Debian package (Ubuntu and Debian containers)
+        run: sh packaging/debian/check-deb.sh --from "$RUNNER_TEMP/release"
+      - name: Build and install the Arch package (Arch container)
+        run: sh packaging/arch/check-arch.sh --from "$RUNNER_TEMP/release"
+
+      # Safe to re-run: an existing release gets the files again (--clobber) instead of failing or being created twice.
+      - name: Publish the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: sh packaging/publish-release.sh "$RUNNER_TEMP/release" "$TAG"
+
+      # POST /trigger/runservice with `Authorization: Token <secret>` runs the package's source service (a package-scoped token):
+      # https://openbuildservice.org/help/manuals/obs-user-guide/cha-obs-authorization-token (its curl example), and osc's
+      # `osc token --trigger` does the same POST: https://github.com/openSUSE/osc/blob/master/osc/obs_api/token.py (Token.do_trigger).
+      # The token goes to curl on stdin as a config line (printf is a shell builtin), so it is on no command line and never
+      # echoed. -f (not --fail-with-body) so no response body is printed; -S still prints curl's own one-line error.
+      - name: Trigger the OBS service run
+        env:
+          OBS_TOKEN: ${{ secrets.OBS_TOKEN }}
+        run: |
+          printf 'header = "Authorization: Token %s"\n' "$OBS_TOKEN" | curl -fsS --config - -X POST https://api.opensuse.org/trigger/runservice >/dev/null
+          echo "OBS service run triggered"
+
+      # Transition only. The webhook URL is the secret; it is passed through the environment and read from stdin.
+      - name: Trigger the Copr build
+        env:
+          COPR_WEBHOOK: ${{ secrets.COPR_WEBHOOK }}
+        run: |
+          if [ -z "$COPR_WEBHOOK" ]; then
+            echo "::notice::COPR_WEBHOOK is not set: Copr is not triggered."
+            exit 0
+          fi
+          printf 'url = "%s"\n' "$COPR_WEBHOOK" | curl -fsS --config - -X POST >/dev/null
+          echo "Copr build triggered"
