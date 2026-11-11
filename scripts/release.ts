@@ -1,5 +1,5 @@
 // Checks that the repo is ready to release, then prints the commands to run.
-// It only prints: it never tags, pushes or builds.
+// It only prints: it never tags, pushes or builds. With --notes it prints the GitHub release notes instead.
 import { execFile } from "node:child_process";
 import { readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -28,6 +28,34 @@ export function shellPath({ path, home }: Webhook): string {
   const rel = relative(home, path);
   if (rel !== "" && rel !== ".." && !rel.startsWith("../") && !isAbsolute(rel)) return `~/${quote(rel)}`;
   return quote(path);
+}
+
+/** The GitHub release notes for `version`: its CHANGELOG section, then the install and tag-check blocks. Null when there is no such section. */
+export function releaseNotes(version: string, changelog: string): string | null {
+  const lines = changelog.split("\n");
+  const start = lines.findIndex((l) => l.startsWith(`## ${version} — `));
+  if (start === -1) return null;
+  const rest = lines.slice(start + 1);
+  const end = rest.findIndex((l) => l.startsWith("## "));
+  const section = (end === -1 ? rest : rest.slice(0, end)).join("\n").trim();
+  const fence = "```";
+  return [
+    section,
+    "",
+    "**Install (Fedora 43/44):**",
+    "",
+    `${fence}bash`,
+    "sudo dnf copr enable chipp/nopipeline",
+    "sudo dnf install nopipeline",
+    fence,
+    "",
+    "The tag is signed with the release key in `.release-signers`; check it with:",
+    "",
+    `${fence}bash`,
+    `git -c gpg.ssh.allowedSignersFile=.release-signers verify-tag v${version}`,
+    fence,
+    "",
+  ].join("\n");
 }
 
 export async function checkRelease(
@@ -117,7 +145,7 @@ export async function checkRelease(
     }
   }
 
-  return { problems, version, commands: [`git tag -s ${tag} -m "nopipeline ${version}"`, `git push origin ${tag}`, `curl -fsS -X POST "$(cat ${shellPath(webhook)})"`], warnings };
+  return { problems, version, commands: [`git tag -s ${tag} -m "nopipeline ${version}"`, `git push origin ${tag}`, `curl -fsS -X POST "$(cat ${shellPath(webhook)})"`, `node scripts/release.ts --notes | gh release create ${tag} --verify-tag --title "nopipeline ${version}" --notes-file -`], warnings };
 }
 
 /** Fetches origin's branches and tags; returns a problem line when that fails. */
@@ -130,7 +158,19 @@ export async function fetchOrigin(git: Git): Promise<string | null> {
   }
 }
 
+async function printNotes(): Promise<void> {
+  const { version } = JSON.parse(await readFile("package.json", "utf8")) as { version: string };
+  const notes = releaseNotes(version, await readFile("CHANGELOG.md", "utf8"));
+  if (notes === null) {
+    console.log(`problem: CHANGELOG.md has no section for ${version} (a heading like '## ${version} — 2026-11-07')`);
+    process.exitCode = 1;
+    return;
+  }
+  process.stdout.write(notes);
+}
+
 async function main(): Promise<void> {
+  if (process.argv.includes("--notes")) return printNotes();
   const run = promisify(execFile);
   const git: Git = async (args) => (await run("git", args, { cwd: process.cwd() })).stdout;
   const fetchProblem = await fetchOrigin(git);

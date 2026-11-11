@@ -3,7 +3,7 @@ import { chmod, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { test } from "node:test";
-import { checkRelease, fetchOrigin, shellPath, webhookLocation } from "../scripts/release.ts";
+import { checkRelease, fetchOrigin, releaseNotes, shellPath, webhookLocation } from "../scripts/release.ts";
 import { tempDir } from "./helpers/tmp.ts";
 
 const SIGNERS = "releases ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample\n";
@@ -12,6 +12,7 @@ const DIFF = "git diff --quiet v0.1.0 HEAD -- packaging/copr-bootstrap.sh";
 
 const URL_TEXT = "https://copr.fedorainfracloud.org/webhooks/custom/12345/00000000-aaaa-bbbb-cccc-SECRETSECRET/nopipeline/";
 const CURL = 'curl -fsS -X POST "$(cat ~/.config/nopipeline/copr-webhook)"';
+const GH = 'node scripts/release.ts --notes | gh release create v0.2.0 --verify-tag --title "nopipeline 0.2.0" --notes-file -';
 
 const happy: Record<string, string | Error> = {
   "git status --porcelain": "",
@@ -50,12 +51,12 @@ async function run(t: import("node:test").TestContext, over: Record<string, stri
   return { result: await checkRelease(git, root, { path: webhookPath, home }), calls, root };
 }
 
-test("the happy path returns the three commands for 0.2.0", async (t) => {
+test("the happy path returns the four commands for 0.2.0", async (t) => {
   const { result } = await run(t);
   assert.deepEqual(result.problems, []);
   assert.deepEqual(result.warnings, []);
   assert.equal(result.version, "0.2.0");
-  assert.deepEqual(result.commands, ['git tag -s v0.2.0 -m "nopipeline 0.2.0"', "git push origin v0.2.0", CURL]);
+  assert.deepEqual(result.commands, ['git tag -s v0.2.0 -m "nopipeline 0.2.0"', "git push origin v0.2.0", CURL, GH]);
 });
 
 test("a webhook file outside HOME is printed with its absolute path", async (t) => {
@@ -275,4 +276,62 @@ test("a webhook file with Windows line endings is a problem and the content is n
   assert.equal(result.problems.length, 1);
   assert.match(result.problems[0]!, /has Windows line endings \(CRLF\)/);
   assert.ok(!JSON.stringify(result).includes("SECRETSECRET"));
+});
+
+const LOG = "# Changelog\n\nNewest first.\n\n## 0.3.0 — 2026-12-01\n\n- three\n- more\n\n## 0.2.0 — 2026-11-11\n\n- two\n\n\n## 0.1.0 — 2026-10-01\n\n- one\n";
+
+test("releaseNotes extracts the section of the asked version, trimmed", () => {
+  assert.match(releaseNotes("0.3.0", LOG)!, /^- three\n- more\n\n\*\*Install/);
+  assert.match(releaseNotes("0.2.0", LOG)!, /^- two\n\n\*\*Install/);
+  assert.match(releaseNotes("0.1.0", LOG)!, /^- one\n\n\*\*Install/);
+  assert.doesNotMatch(releaseNotes("0.2.0", LOG)!, /three|- one/);
+});
+
+test("releaseNotes is null when the changelog has no section for the version", () => {
+  assert.equal(releaseNotes("0.4.0", LOG), null);
+  assert.equal(releaseNotes("0.2", LOG), null);
+});
+
+test("releaseNotes prints the exact notes for a sample", () => {
+  const fence = "```";
+  assert.equal(
+    releaseNotes("0.2.0", LOG),
+    [
+      "- two",
+      "",
+      "**Install (Fedora 43/44):**",
+      "",
+      `${fence}bash`,
+      "sudo dnf copr enable chipp/nopipeline",
+      "sudo dnf install nopipeline",
+      fence,
+      "",
+      "The tag is signed with the release key in `.release-signers`; check it with:",
+      "",
+      `${fence}bash`,
+      "git -c gpg.ssh.allowedSignersFile=.release-signers verify-tag v0.2.0",
+      fence,
+      "",
+    ].join("\n"),
+  );
+});
+
+test("--notes prints the notes for package.json's version without git; a missing section is a problem", async (t) => {
+  const root = await tempDir(t);
+  const script = join(process.cwd(), "scripts", "release.ts");
+  await writeFile(join(root, "package.json"), JSON.stringify({ version: "0.2.0" }));
+  await writeFile(join(root, "CHANGELOG.md"), LOG);
+  const out = execFileSync("node", [script, "--notes"], { cwd: root, encoding: "utf8" });
+  assert.equal(out, releaseNotes("0.2.0", LOG));
+  await writeFile(join(root, "package.json"), JSON.stringify({ version: "0.9.0" }));
+  let status = 0;
+  let stdout = "";
+  try {
+    execFileSync("node", [script, "--notes"], { cwd: root, encoding: "utf8" });
+  } catch (error) {
+    status = (error as { status: number }).status;
+    stdout = (error as { stdout: string }).stdout;
+  }
+  assert.equal(status, 1);
+  assert.match(stdout, /^problem: CHANGELOG\.md has no section for 0\.9\.0/);
 });
