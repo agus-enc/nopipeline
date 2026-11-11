@@ -17,8 +17,7 @@ package() {
   install -d "$pkgdir/usr/share/nopipeline" "$pkgdir/usr/bin" "$pkgdir/usr/share/pacman/keyrings" \
     "$pkgdir/usr/share/doc/nopipeline" "$pkgdir/usr/share/licenses/nopipeline"
   cp -a src node_modules package.json package-lock.json version.json "$pkgdir/usr/share/nopipeline/"
-  printf '%s\n' '#!/bin/sh' 'exec /usr/bin/node /usr/share/nopipeline/src/cli.ts "$@"' >"$pkgdir/usr/bin/nopipeline"
-  chmod 0755 "$pkgdir/usr/bin/nopipeline"
+  install -m 0755 packaging/nopipeline-launcher.sh "$pkgdir/usr/bin/nopipeline"
   install -m 0644 keys/nopipeline.gpg "$pkgdir/usr/share/pacman/keyrings/nopipeline.gpg"
   install -m 0644 keys/nopipeline-trusted "$pkgdir/usr/share/pacman/keyrings/nopipeline-trusted"
   install -m 0644 LICENSE "$pkgdir/usr/share/licenses/nopipeline/LICENSE"

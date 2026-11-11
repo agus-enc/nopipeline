@@ -13,9 +13,9 @@ const OBS_HOST = "https://download.opensuse.org/repositories";
 const DAY = 86400;
 const WARN_DAYS = 180;
 
-/** Distros whose own Node is older than 22.22 (or lacks TypeScript support) need Node from NodeSource. One place to change. */
+/** Debian and Ubuntu archive Node.js is built without TypeScript support, so those users need Node.js from NodeSource. One place to change. */
 const NODE_NOTE =
-  "nopipeline needs Node.js 22.22 or newer. Debian 13 and Ubuntu 24.04 ship an older one; install Node.js 22 from [NodeSource](https://github.com/nodesource/distributions) first.";
+  "On Debian, Ubuntu and derivatives, first install Node.js 22.22 or newer from [NodeSource](https://github.com/nodesource/distributions): the distribution's own Node.js can't run nopipeline (no TypeScript support).";
 
 /** The directory of one OBS repository on download.opensuse.org. */
 export function obsRepoUrl(project: string, repo: string): string {

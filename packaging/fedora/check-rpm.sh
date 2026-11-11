@@ -4,6 +4,7 @@
 # ssh-keygen, npm, rpm-build, rpm, Docker and nodejs >= 22.22 on the host (rpmbuild checks BuildRequires), and the
 # network (npm and the container images). It builds from `git archive HEAD`: commit your changes before running it.
 # The containers install with weak dependencies off, so the Recommends (libnotify, xdg-utils) are not pulled in.
+# The installed launcher must equal packaging/nopipeline-launcher.sh except line 1: rpm's brp-mangle-shebangs rewrites #!/bin/sh to #!/usr/bin/sh.
 # Run from the repository root: packaging/fedora/check-rpm.sh
 set -eu
 
@@ -52,8 +53,8 @@ done
 
 for n in 43 44; do
   step "fedora:$n"
-  docker run --rm -v "$work/top/RPMS:/rpms:ro,z" "fedora:$n" \
-    sh -c 'dnf -y --setopt=install_weak_deps=False install /rpms/noarch/*.rpm && nopipeline --version && nopipeline --help >/dev/null && node --version'
+  docker run --rm -v "$work/top/RPMS:/rpms:ro,z" -v "$root/packaging/nopipeline-launcher.sh:/launcher.sh:ro,z" "fedora:$n" \
+    sh -c 'dnf -y --setopt=install_weak_deps=False install /rpms/noarch/*.rpm && nopipeline --version && nopipeline --help >/dev/null && node --version && head -n 1 /usr/bin/nopipeline | grep -qx "#!/usr/bin/sh" && [ "$(tail -n +2 /usr/bin/nopipeline | sha256sum)" = "$(tail -n +2 /launcher.sh | sha256sum)" ]'
 done
 
 step "all checks passed"

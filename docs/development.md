@@ -110,9 +110,11 @@ It (and the bootstrap) call these tools: `git`, `ssh-keygen` (through git's SSH 
 
 It takes optional arguments (`[<git-url> [<result-dir> [<tag>]]]`). On Copr it runs with none, so the defaults apply: `https://github.com/agus-enc/nopipeline.git`, the current folder, and the newest tag.
 
+All three recipes install the one `packaging/nopipeline-launcher.sh` as `/usr/bin/nopipeline`. It runs `/usr/bin/node` on `src/cli.ts`, but first checks `process.features.typescript`; on a Node without it (the Debian and Ubuntu archive one) it prints that Node.js 22.22 or newer from NodeSource is needed and exits 1. The check scripts compare the installed file with it byte for byte (the rpm differs only in the first line: rpm rewrites `#!/bin/sh` to `#!/usr/bin/sh`).
+
 ### Checking the Debian recipe
 
-`packaging/debian/check-deb.sh` (manual, run from the repository root after committing; needs Docker, gpg, curl and the network) builds the OBS source from `HEAD` with a throwaway repo key, lays out `debian/` as debtransform would, builds the `.deb` in `ubuntu:26.04`, and installs and runs it in `ubuntu:26.04` and `debian:13`. Both get Node 22.x from NodeSource (the same deb822 file its [setup script](https://deb.nodesource.com/setup_22.x) writes), because the distributions' own `nodejs` is built without TypeScript support and cannot run `src/cli.ts`.
+`packaging/debian/check-deb.sh` (manual, run from the repository root after committing; needs Docker, gpg, curl and the network) builds the OBS source from `HEAD` with a throwaway repo key, lays out `debian/` as debtransform would, builds the `.deb` in `ubuntu:26.04`, installs and runs it in `ubuntu:26.04` and `debian:13`, and in `ubuntu:26.04` with the archive's own `nodejs` checks that `nopipeline --version` exits 1 with the TypeScript message. Both get Node 22.x from NodeSource (the same deb822 file its [setup script](https://deb.nodesource.com/setup_22.x) writes), because the distributions' own `nodejs` is built without TypeScript support and cannot run `src/cli.ts`.
 
 ### Checking the Arch recipe
 

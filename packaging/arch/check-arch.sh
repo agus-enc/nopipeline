@@ -69,6 +69,7 @@ node --version
 nopipeline --version
 nopipeline --help >/dev/null
 [ "$(stat -c %a /usr/bin/nopipeline)" = 755 ]
+cmp /usr/bin/nopipeline /launcher.sh
 for f in nopipeline.gpg nopipeline-trusted; do
   [ "$(stat -c %a "/usr/share/pacman/keyrings/$f")" = 644 ] || { echo "check-arch: bad mode on $f" >&2; exit 1; }
 done
@@ -90,6 +91,6 @@ pacman -U --noconfirm "$pkg"
 INNER
 
 step "archlinux: makepkg, pacman -U, run, keyring"
-docker run --rm -v "$work/src:/src:ro,z" -v "$work/check.sh:/check.sh:ro,z" archlinux:latest sh /check.sh "$fpr"
+docker run --rm -v "$work/src:/src:ro,z" -v "$work/check.sh:/check.sh:ro,z" -v "$PWD/packaging/nopipeline-launcher.sh:/launcher.sh:ro,z" archlinux:latest sh /check.sh "$fpr"
 
 step "all checks passed"

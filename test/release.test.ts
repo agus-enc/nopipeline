@@ -282,6 +282,8 @@ test("releaseNotes install blocks come from the OBS project", () => {
   assert.ok(notes.includes(`Server = ${base}/Arch/$arch`));
   assert.ok(notes.includes(`sudo pacman-key --lsign-key ${FPR}`));
   assert.ok(notes.includes("https://github.com/nodesource/distributions"));
+  assert.ok(notes.includes("Node.js 22.22 or newer from [NodeSource]"));
+  assert.ok(notes.includes("no TypeScript support"));
   assert.ok(notes.includes("verify-tag v0.2.0"));
   assert.doesNotMatch(notes, /copr/i);
 });

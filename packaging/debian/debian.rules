@@ -13,9 +13,7 @@ override_dh_auto_install:
 	install -d debian/nopipeline/usr/share/nopipeline debian/nopipeline/usr/bin \
 	  debian/nopipeline/usr/share/keyrings $(doc)
 	cp -a src node_modules package.json package-lock.json version.json debian/nopipeline/usr/share/nopipeline/
-	printf '%s\n' '#!/bin/sh' 'exec /usr/bin/node /usr/share/nopipeline/src/cli.ts "$$@"' \
-	  >debian/nopipeline/usr/bin/nopipeline
-	chmod 0755 debian/nopipeline/usr/bin/nopipeline
+	install -m 0755 packaging/nopipeline-launcher.sh debian/nopipeline/usr/bin/nopipeline
 	install -m 0644 keys/nopipeline-archive-keyring.gpg debian/nopipeline/usr/share/keyrings/nopipeline-archive-keyring.gpg
 	install -m 0644 LICENSE $(doc)/LICENSE
 	install -m 0644 node_modules/@notionhq/client/LICENSE $(doc)/LICENSE.notionhq-client

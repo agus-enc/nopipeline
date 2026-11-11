@@ -26,11 +26,7 @@ directions, and keeps the links between notes working.
 %install
 install -d %{buildroot}/usr/share/nopipeline %{buildroot}/usr/bin
 cp -a src node_modules package.json package-lock.json version.json %{buildroot}/usr/share/nopipeline/
-cat > %{buildroot}/usr/bin/nopipeline <<'LAUNCHER'
-#!/bin/sh
-exec /usr/bin/node /usr/share/nopipeline/src/cli.ts "$@"
-LAUNCHER
-chmod 755 %{buildroot}/usr/bin/nopipeline
+install -m 0755 packaging/nopipeline-launcher.sh %{buildroot}/usr/bin/nopipeline
 
 %files
 %license LICENSE node_modules/@notionhq/client/LICENSE node_modules/node-diff3/LICENSE.md

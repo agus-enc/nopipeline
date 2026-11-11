@@ -108,6 +108,25 @@ nopipeline --help >/dev/null
 test -f /usr/share/keyrings/nopipeline-archive-keyring.gpg
 [ "$(stat -c %a /usr/share/keyrings/nopipeline-archive-keyring.gpg)" = 644 ]
 [ "$(stat -c %a /usr/bin/nopipeline)" = 755 ]
+cmp /usr/bin/nopipeline /launcher.sh
+INNER
+
+# Runs in ubuntu:26.04 with the archive's own nodejs (built without TypeScript support): the package installs, and the
+# launcher explains instead of failing with ERR_UNKNOWN_FILE_EXTENSION.
+cat >"$work/archive-node.sh" <<'INNER'
+set -eu
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -qq
+apt-get install -y -qq --no-install-recommends nodejs /debs/nopipeline_*_all.deb >/dev/null
+echo "archive node: $(node --version)"
+cmp /usr/bin/nopipeline /launcher.sh
+want="nopipeline: this Node.js ($(node --version)) cannot run TypeScript. Install Node.js 22.22 or newer from NodeSource (https://github.com/nodesource/distributions), which can."
+status=0
+nopipeline --version >/tmp/out 2>/tmp/err || status=$?
+cat /tmp/err
+[ "$status" = 1 ] || { echo "check-deb: expected exit 1 with the archive Node, got $status" >&2; exit 1; }
+[ ! -s /tmp/out ] || { echo "check-deb: unexpected stdout" >&2; exit 1; }
+[ "$(cat /tmp/err)" = "$want" ] || { echo "check-deb: unexpected message" >&2; exit 1; }
 INNER
 
 mkdir "$work/debs"
@@ -117,7 +136,10 @@ ls -l "$work/debs"
 
 for image in ubuntu:26.04 debian:13; do
   step "$image with NodeSource 22.x: install the .deb and run it"
-  docker run --rm -v "$work/debs:/debs:ro,z" -v "$work/install.sh:/install.sh:ro,z" "$image" sh /install.sh
+  docker run --rm -v "$work/debs:/debs:ro,z" -v "$work/install.sh:/install.sh:ro,z" -v "$PWD/packaging/nopipeline-launcher.sh:/launcher.sh:ro,z" "$image" sh /install.sh
 done
+
+step "ubuntu:26.04 with the archive's nodejs: the launcher says it cannot run TypeScript"
+docker run --rm -v "$work/debs:/debs:ro,z" -v "$work/archive-node.sh:/archive-node.sh:ro,z" -v "$PWD/packaging/nopipeline-launcher.sh:/launcher.sh:ro,z" ubuntu:26.04 sh /archive-node.sh
 
 step "all checks passed"
