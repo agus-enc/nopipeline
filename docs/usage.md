@@ -4,7 +4,7 @@ The commands, their options, exit codes, notes on how a run behaves, and where t
 
 ## Commands and options
 
-Everything below is written as `nopipeline …`, which works from the Fedora package or after `npm link` (see [Setup](setup.md#from-a-clone-npm-link)). From a clone, `node src/cli.ts …` does the same (`npm run sync -- …` and `nopipeline setup` also work from the clone's folder).
+Everything below is written as `nopipeline …`, which works from the Fedora package or after `npm link` (see [Setup](setup.md#from-a-clone-npm-link)). From a clone, `node src/cli.ts …` does the same (`npm run sync -- …` and `npm run setup` also work from the clone's folder).
 
 ### `sync`
 

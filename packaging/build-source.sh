@@ -112,8 +112,9 @@ tar --sort=name --owner=0 --group=0 --numeric-owner -czf "$out/nopipeline-$versi
 template="$tree/packaging/fedora/nopipeline.spec.in"
 if [ -f "$template" ]; then
   date=$(LC_ALL=C TZ=UTC date '+%a %b %d %Y') || fail "cannot read the date"
-  # One Provides line per package that ships: each lockfile entry whose package.json exists after npm ci (dev-only,
-  # unmatched optional and link entries are not installed, so they drop out). Lockfile order.
+  # One Provides line per package that ships: each lockfile entry whose package.json exists after npm ci, so the list is
+  # exactly what npm ci put in node_modules (workspace links included; dev-only and skipped optional entries are not
+  # there). Lockfile order.
   (cd "$tree" && node -e '
     const fs = require("node:fs");
     const packages = require("./package-lock.json").packages ?? {};
