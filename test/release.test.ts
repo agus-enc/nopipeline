@@ -80,6 +80,17 @@ test("a webhook file readable by group or others is a problem, 400 and 600 are f
   assert.deepEqual(result.problems, []);
 });
 
+test("a webhook file with spaces or blank lines around the URL is a problem (curl rejects a leading space)", async (t) => {
+  for (const webhook of [` ${URL_TEXT}\n`, `${URL_TEXT} \n`, `\t${URL_TEXT}`, `\n${URL_TEXT}\n`, `${URL_TEXT}\n\n`]) {
+    const { result } = await run(t, {}, { webhook });
+    assert.equal(result.problems.length, 1, JSON.stringify(webhook));
+    assert.match(result.problems[0]!, /has spaces or blank lines around the URL; it must hold only the URL/);
+    assert.ok(!result.problems[0]!.includes("SECRET"));
+  }
+  const { result } = await run(t, {}, { webhook: URL_TEXT });
+  assert.deepEqual(result.problems, [], "no trailing newline is fine");
+});
+
 test("a webhook file that is not a Copr custom webhook URL is a problem", async (t) => {
   for (const webhook of ["", "\n", "http://copr.fedorainfracloud.org/webhooks/custom/1/x/", "https://example.com/webhooks/custom/1/x/", "token=abc"]) {
     const { result } = await run(t, {}, { webhook });

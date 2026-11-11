@@ -119,7 +119,7 @@ mkdir -p ~/.config/nopipeline
 install -m 600 /dev/null ~/.config/nopipeline/copr-webhook
 ```
 
-and paste the URL into that file with an editor (use `$XDG_CONFIG_HOME` instead of `~/.config` if you set it). The URL is a secret: anyone who has it can start builds, though only of signed tags. Never commit it or paste it into a chat or log. If Copr regenerates the URL on the Integrations page, update the file. See [Copr's custom webhook docs](https://docs.copr.fedorainfracloud.org/custom_source_method.html).
+and paste the URL into that file with an editor, alone on its line (no spaces before or after; `node scripts/release.ts` checks it) (use `$XDG_CONFIG_HOME` instead of `~/.config` if you set it). The URL is a secret: anyone who has it can start builds, though only of signed tags. Never commit it or paste it into a chat or log. If Copr regenerates the URL on the Integrations page, update the file. See [Copr's custom webhook docs](https://docs.copr.fedorainfracloud.org/custom_source_method.html).
 
 ### The Copr API token
 

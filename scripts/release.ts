@@ -96,7 +96,9 @@ export async function checkRelease(
       // an unreadable file cannot hold a valid URL; reported below
     }
     const text = raw.trim();
+    const line = raw.endsWith("\n") ? raw.slice(0, -1) : raw;
     if (raw.includes("\r")) problems.push(`${webhook.path} has Windows line endings (CRLF); save it with LF`);
+    else if (text !== "" && line !== text) problems.push(`${webhook.path} has spaces or blank lines around the URL; it must hold only the URL (curl rejects the extra characters)`);
     else if (!text.startsWith(WEBHOOK_PREFIX) || /\s/.test(text)) problems.push(`${webhook.path} doesn't look like a Copr custom webhook URL`);
   }
 
