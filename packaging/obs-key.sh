@@ -6,6 +6,7 @@
 #
 # Writes <out-dir>/keys/{nopipeline-archive-keyring.gpg,nopipeline.gpg,nopipeline-trusted} and <out-dir>/expires
 # (the primary key's expiry in Unix seconds, 0 for none). Nothing is written unless every check passes.
+# Exit status: 0 ok; 2 the download has no key with the pinned fingerprint (scripts/key-check.ts tells this apart); 1 any other failure.
 # gpg runs in a private temporary home: the caller's keyring is never read or changed.
 set -eu
 
@@ -25,6 +26,13 @@ cleanup() {
   fi
 }
 trap cleanup EXIT
+
+# Like fail, but exit 2: the served key is not the pinned one.
+mismatch() {
+  reported=1
+  printf 'obs-key: %s\n' "$*" >&2
+  exit 2
+}
 
 # The one place that knows where OBS serves a project's signing key.
 project_url() {
@@ -61,7 +69,7 @@ gpgb --import "$work/download" >/dev/null 2>&1 || fail "the download from $url h
 
 # In --with-colons output the first fpr line after a pub line is that key's primary fingerprint.
 primaries=$(gpgb --with-colons --fingerprint --list-keys 2>/dev/null | awk -F: '$1=="pub"{want=1;next} $1=="fpr"&&want{print $10;want=0}')
-printf '%s\n' "$primaries" | grep -Fxq "$fingerprint" || fail "no key in the download has the pinned fingerprint"
+printf '%s\n' "$primaries" | grep -Fxq "$fingerprint" || mismatch "no key in the download has the pinned fingerprint"
 
 # export-clean drops other people's certifications; export-minimal keeps only the newest self-signatures.
 gpgb --export --export-options export-minimal,export-clean "$fingerprint" >"$work/key.gpg" 2>/dev/null || fail "cannot export the pinned key"

@@ -116,7 +116,7 @@ test("a different key fails", { skip }, async (t) => {
   const fpr = makeKey(home, "pinned", "2031-05-01");
   const other = makeKey(home, "other", "2031-05-01");
   const { r, out, listing } = await run(t, async (o) => [await keyFile(t, armored(home, other)), fpr, o]);
-  assert.equal(r.status, 1);
+  assert.equal(r.status, 2);
   assert.match(r.stderr, /^obs-key: /);
   assert.equal(listing, null, out);
 });
@@ -129,7 +129,7 @@ test("a key that only has the pinned fingerprint as a subkey fails", { skip }, a
   const listing = text(gpg(home, ["--with-colons", "--fingerprint", "--list-keys", main]).stdout);
   const sub = [...listing.matchAll(/^fpr:::::::::([0-9A-F]{40}):/gm)].map((m) => m[1]!)[1]!;
   const { r, listing: written } = await run(t, async (o) => [await keyFile(t, armored(home, main)), sub, o]);
-  assert.equal(r.status, 1);
+  assert.equal(r.status, 2);
   assert.match(r.stderr, /^obs-key: /);
   assert.equal(written, null);
 });
