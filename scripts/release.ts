@@ -20,25 +20,31 @@ export async function checkRelease(
   const version = pkg.version;
   const tag = `v${version}`;
 
-  if ((await git(["status", "--porcelain"])).trim() !== "") problems.push("the working tree is not clean (git status --porcelain prints something)");
-  const branch = (await git(["rev-parse", "--abbrev-ref", "HEAD"])).trim();
-  if (branch !== "main") problems.push(`not on main (on ${branch})`);
-  const head = (await git(["rev-parse", "HEAD"])).trim();
-  let remote: string | null = null;
-  try {
-    remote = (await git(["rev-parse", "origin/main"])).trim();
-  } catch {
-    problems.push("cannot read origin/main (is the remote called origin, and fetched?)");
-  }
-  if (remote !== null && head !== remote) problems.push("HEAD is not origin/main (push or pull first)");
+  /** Runs one git command; a failure becomes a problem line naming it, and the result is null. */
+  const safe = async (args: string[]): Promise<string | null> => {
+    try {
+      return await git(args);
+    } catch (error) {
+      problems.push(`could not run git ${args.join(" ")}: ${error instanceof Error ? error.message.split("\n")[0] : String(error)}`);
+      return null;
+    }
+  };
+
+  const status = await safe(["status", "--porcelain"]);
+  if (status !== null && status.trim() !== "") problems.push("the working tree is not clean (git status --porcelain prints something)");
+  const branch = (await safe(["rev-parse", "--abbrev-ref", "HEAD"]))?.trim();
+  if (branch !== undefined && branch !== "main") problems.push(`not on main (on ${branch})`);
+  const head = (await safe(["rev-parse", "HEAD"]))?.trim();
+  const remote = (await safe(["rev-parse", "origin/main"]))?.trim();
+  if (head !== undefined && remote !== undefined && head !== remote) problems.push("HEAD is not origin/main (push or pull first)");
 
   const changelog = await readFile(join(root, "CHANGELOG.md"), "utf8");
   const heading = changelog.split("\n").map((l) => /^## (\d+\.\d+\.\d+) — \d{4}-\d{2}-\d{2}$/.exec(l)).find((m) => m !== null);
   if (!heading) problems.push("CHANGELOG.md has no version heading like '## 0.2.0 — 2026-11-07'");
   else if (heading[1] !== version) problems.push(`package.json says ${version} but the newest CHANGELOG.md heading says ${heading[1]}`);
 
-  if ((await git(["tag", "--list", tag])).trim() !== "") problems.push(`tag ${tag} already exists locally`);
-  if ((await git(["ls-remote", "--tags", "origin", tag])).trim() !== "") problems.push(`tag ${tag} already exists on origin`);
+  if (((await safe(["tag", "--list", tag])) ?? "").trim() !== "") problems.push(`tag ${tag} already exists locally`);
+  if (((await safe(["ls-remote", "--tags", "origin", tag])) ?? "").trim() !== "") problems.push(`tag ${tag} already exists on origin`);
 
   let signers: string | null = null;
   try {
@@ -53,7 +59,7 @@ export async function checkRelease(
     problems.push(".release-signers must hold exactly one line: releases ssh-ed25519 <public key>");
   }
 
-  const tags = (await git(["tag", "--list", "v[0-9]*.[0-9]*.[0-9]*", "--sort=-v:refname"]))
+  const tags = ((await safe(["tag", "--list", "v[0-9]*.[0-9]*.[0-9]*", "--sort=-v:refname"])) ?? "")
     .split("\n")
     .map((l) => l.trim())
     .filter((l) => /^v\d+\.\d+\.\d+$/.test(l) && l !== tag);

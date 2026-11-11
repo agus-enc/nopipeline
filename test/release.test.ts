@@ -134,6 +134,14 @@ test("an exit code 1 from the diff is the changed warning", async (t) => {
   assert.equal(result.warnings.length, 1);
 });
 
+test("a git failure in any check becomes a problem naming the command", async (t) => {
+  for (const [key, name] of [["git status --porcelain", "status"], ["git ls-remote --tags origin v0.2.0", "ls-remote"]] as const) {
+    const { result } = await run(t, { [key]: exitWith(128) });
+    assert.equal(result.problems.length, 1, name);
+    assert.match(result.problems[0]!, new RegExp(`could not run git ${name}`));
+  }
+});
+
 test("a missing origin/main is a problem, not a stack trace", async (t) => {
   const { result } = await run(t, { "git rev-parse origin/main": exitWith(128) });
   assert.equal(result.problems.length, 1);
