@@ -15,6 +15,18 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # The whole history, for the UTC check below.
+          fetch-depth: 0
+      # Every commit's author and committer dates must be in UTC (+0000), so the history shows no time zone.
+      # Commit with TZ=UTC set (for example `TZ=UTC git commit`).
+      - name: Commits are in UTC
+        run: |
+          bad=$(git log --format='%h %ad %cd' --date=format:%z | awk '$2 != "+0000" || $3 != "+0000"')
+          if [ -n "$bad" ]; then
+            echo "These commits are not in UTC (+0000); recommit them with TZ=UTC:"
+            echo "$bad"
+            exit 1
+          fi
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "22.22"

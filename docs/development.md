@@ -15,6 +15,16 @@ Point the probe and the live test only at a scratch database, never at the real 
 
 The live tests need the scratch notes database to have a `Project` relation to a scratch projects database (the connection must be connected to both), so the folder and project tests can run.
 
+## Commits
+
+Commit dates are in UTC, so the history doesn't show a time zone. Git takes the zone from `TZ`, so commit with it set:
+
+```bash
+TZ=UTC git commit
+```
+
+or add a repo-local alias once (`git config --local alias.c '!TZ=UTC git commit'`) and commit with `git c`. CI fails if any commit's author or committer date isn't `+0000`.
+
 ## Releases
 
 A release is a signed git tag `vX.Y.Z`. Copr builds the Fedora package only from a tag signed by the release key.
