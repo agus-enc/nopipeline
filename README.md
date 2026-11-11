@@ -52,14 +52,15 @@ The tool never creates or changes a database in Notion. It links the ones you al
    ```bash
    dist=Debian_13
    key=$(mktemp)
-   curl -fsSL https://download.opensuse.org/repositories/home:/<user>:/nopipeline/$dist/Release.key -o "$key"
-   gpg --show-keys "$key"
+   curl -fsSL https://download.opensuse.org/repositories/home:/<user>:/nopipeline/$dist/Release.key -o "$key" &&
+     gpg --show-keys "$key"
    ```
 
    Only if the fingerprint matches, install the key and add the repository (same shell, so `dist` and `key` are still set):
 
    ```bash
-   sudo gpg --dearmor --yes -o /usr/share/keyrings/nopipeline-archive-keyring.gpg "$key"
+   [ -s "$key" ] && sudo gpg --dearmor --yes -o /usr/share/keyrings/nopipeline-archive-keyring.gpg "$key"
+   rm -f "$key"
    sudo tee /etc/apt/sources.list.d/nopipeline.sources <<EOF
    Types: deb
    URIs: https://download.opensuse.org/repositories/home:/<user>:/nopipeline/$dist/
@@ -154,14 +155,15 @@ The repository is signed with a key that OBS renews about every two years, and e
   ```bash
   dist=Debian_13
   key=$(mktemp)
-  curl -fsSL https://download.opensuse.org/repositories/home:/<user>:/nopipeline/$dist/Release.key -o "$key"
-  gpg --show-keys "$key"
+  curl -fsSL https://download.opensuse.org/repositories/home:/<user>:/nopipeline/$dist/Release.key -o "$key" &&
+    gpg --show-keys "$key"
   ```
 
   Only if the fingerprint matches, replace the keyring (the old one stays if the download failed):
 
   ```bash
-  sudo gpg --dearmor --yes -o /usr/share/keyrings/nopipeline-archive-keyring.gpg "$key"
+  [ -s "$key" ] && sudo gpg --dearmor --yes -o /usr/share/keyrings/nopipeline-archive-keyring.gpg "$key"
+  rm -f "$key"
   ```
 
   The fingerprint to compare with is in [`packaging/obs-signing-key.fingerprint`](https://github.com/agus-enc/nopipeline/blob/main/packaging/obs-signing-key.fingerprint).
