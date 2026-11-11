@@ -95,11 +95,14 @@ tar --sort=name --owner=0 --group=0 --numeric-owner -czf "$out/nopipeline-$versi
 template="$tree/packaging/fedora/nopipeline.spec.in"
 if [ -f "$template" ]; then
   date=$(LC_ALL=C TZ=UTC date '+%a %b %d %Y') || fail "cannot read the date"
-  # One Provides line per production package in the lockfile (dev-only packages are not installed), in lockfile order.
+  # One Provides line per package that ships: lockfile entries with a version, not dev-only, and (when optional) really
+  # installed by npm ci above. Lockfile order.
   (cd "$tree" && node -e '
+    const fs = require("node:fs");
     const packages = require("./package-lock.json").packages ?? {};
     for (const [key, info] of Object.entries(packages)) {
-      if (key === "" || info.dev) continue;
+      if (key === "" || info.dev || !info.version) continue;
+      if (info.optional && !fs.existsSync(`${key}/package.json`)) continue;
       process.stdout.write(`Provides:       bundled(nodejs-${key.slice(key.lastIndexOf("node_modules/") + 13)}) = ${info.version}\n`);
     }
   ') >"$work/bundled" || fail "cannot read the bundled packages from the lockfile"

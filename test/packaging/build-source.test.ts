@@ -48,7 +48,7 @@ test("a tag signed with the release key builds", { skip }, async (t) => {
   assert.match(spec, /^Version:\s+0\.2\.0$/m);
   assert.doesNotMatch(spec, /@[A-Z]+@/, "no placeholder is left in the spec");
   assert.match(spec, /^\* (Mon|Tue|Wed|Thu|Fri|Sat|Sun) [A-Z][a-z]{2} \d\d \d{4} nopipeline <noreply@github\.com> - 0\.2\.0-1$/m);
-  assert.doesNotMatch(spec, /^Provides: bundled/m, "a tree with no dependencies bundles nothing");
+  assert.doesNotMatch(spec, /^Provides:\s+bundled/m, "a tree with no dependencies bundles nothing");
   const names = spawnSync("tar", ["-tzf", join(result, "nopipeline-0.2.0.tar.gz")], { encoding: "utf8" }).stdout.split("\n");
   assert.ok(names.includes("nopipeline-0.2.0/src/cli.ts"));
   assert.ok(names.includes("nopipeline-0.2.0/version.json"));
@@ -226,4 +226,43 @@ test("with no arguments the script clones the default repository into the curren
   assert.notEqual(run.status, 0);
   assert.match(run.stderr, /^build-source: cannot clone https:\/\/github\.com\/agus-enc\/nopipeline\.git/m);
   assert.deepEqual(await readdir(cwd), []);
+});
+
+test("the spec lists the production packages of the lockfile that npm ci installed", { skip }, async (t) => {
+  const files = tree("0.2.0");
+  const entry = (version?: string, extra: object = {}) => ({ ...(version ? { version } : {}), resolved: "https://registry.npmjs.org/x/-/x.tgz", ...extra });
+  files["package-lock.json"] = JSON.stringify({
+    name: "nopipeline", version: "0.2.0", lockfileVersion: 3, requires: true,
+    packages: {
+      "": { name: "nopipeline", version: "0.2.0" },
+      "node_modules/@scope/name": entry("1.2.3"),
+      "node_modules/a": entry("2.0.0"),
+      "node_modules/a/node_modules/b": entry("4.5.6"),
+      "node_modules/devonly": entry("7.0.0", { dev: true }),
+      "node_modules/linked": { resolved: "../linked", link: true },
+      "node_modules/opt": entry("8.0.0", { optional: true }),
+    },
+  });
+  // A stand-in for npm: ci installs every entry that is not dev, a link or the optional one; audit succeeds.
+  const bin = join(await tempDir(t), "bin");
+  await mkdir(bin);
+  await writeFile(join(bin, "npm"), `#!/usr/bin/env node
+const fs = require("node:fs");
+if (process.argv[2] === "ci") {
+  const packages = JSON.parse(fs.readFileSync("package-lock.json", "utf8")).packages;
+  for (const [key, info] of Object.entries(packages)) {
+    if (key === "" || info.dev || info.link || info.optional) continue;
+    fs.mkdirSync(key, { recursive: true });
+    fs.writeFileSync(key + "/package.json", "{}");
+  }
+}
+`);
+  await chmod(join(bin, "npm"), 0o755);
+  const { run, result } = await build(t, [{ name: "v0.2.0", sign: "release" }], { files, env: { NOPIPELINE_SKIP_AUDIT: "", PATH: `${bin}:${process.env.PATH}` } });
+  assert.equal(run.status, 0, run.stderr);
+  const provides = (await readFile(join(result, "nopipeline.spec"), "utf8")).split("\n").filter((l) => /^Provides:\s+bundled/.test(l));
+  assert.equal(provides.length, 3, provides.join("\n"));
+  assert.match(provides[0] ?? "", /^Provides:\s+bundled\(nodejs-@scope\/name\) = 1\.2\.3$/);
+  assert.match(provides[1] ?? "", /^Provides:\s+bundled\(nodejs-a\) = 2\.0\.0$/);
+  assert.match(provides[2] ?? "", /^Provides:\s+bundled\(nodejs-b\) = 4\.5\.6$/);
 });
