@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { main, terminalIo, type MainDeps } from "../src/cli.ts";
 import type { Desktop } from "../src/desktop.ts";
 import type { ObsidianProbe } from "../src/vault/inuse.ts";
+import { versionString } from "../src/version.ts";
 import type { NotionGateway } from "../src/notion/gateway.ts";
 import { STATUS_MARKER } from "../src/status/note.ts";
 import { FakeNotion } from "./helpers/fake-notion.ts";
@@ -111,6 +112,14 @@ test("a sync writes the status note and the log", async (t) => {
   const log = await readFile(join(stateDir, "last-run.log"), "utf8");
   assert.match(log, /1 × Notion page created/);
   assert.ok(!note.includes(TOKEN) && !log.includes(TOKEN));
+});
+
+test("the first line of last-run.log is the version", async (t) => {
+  const { vault, stateDir, run } = await cliSetup(t);
+  await writeTree(vault, { "A.md": "Hello\n" });
+  assert.equal((await run("--yes")).code, 0);
+  const log = await readFile(join(stateDir, "last-run.log"), "utf8");
+  assert.equal(log.split("\n")[0], `nopipeline ${await versionString()}`);
 });
 
 async function holdTwelve(t: import("node:test").TestContext) {

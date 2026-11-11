@@ -34,7 +34,7 @@ git config --local gpg.format ssh
 git config --local user.signingkey ~/.ssh/nopipeline_release_ed25519
 ```
 
-Or pass it for one tag: `git -c gpg.format=ssh -c user.signingkey=~/.ssh/nopipeline_release_ed25519 tag -s …`.
+Or pass it for one tag: `git -c gpg.format=ssh -c user.signingkey="$HOME"/.ssh/nopipeline_release_ed25519 tag -s …`.
 
 The same line is pasted into the Copr package's script (see [Packaging](#packaging)). The build trusts that copy, never the one in the repo.
 
@@ -74,6 +74,8 @@ A fix that only touches packaging is a new patch version, so the version always 
 - builds from `git archive` of the tag, so files marked `export-ignore` in `.gitattributes` (`test/`, `scripts/`, `.github/`) are left out;
 - runs `npm ci --omit=dev --ignore-scripts` and `npm audit signatures`;
 - writes `version.json` (version and commit), `nopipeline-<version>.tar.gz` and `nopipeline.spec` (from `packaging/fedora/nopipeline.spec.in`, with the version, date and one `Provides: bundled(nodejs-…)` line per shipped dependency).
+
+It calls these tools: `git`, `ssh-keygen` (through git's SSH signature check), `node`, `npm`, `tar`, `sed`, `grep`, `head`, `tr`, `date`, `env`, `mktemp`, `realpath`, and `rm`, `mkdir` and `mv`. It trusts the `PATH` it runs with, which is fine on Copr, whose build chroot controls `PATH`; do not run it with a `PATH` you do not control.
 
 It takes optional arguments (`[<git-url> [<result-dir> [<tag>]]]`). On Copr it runs with none, so the defaults apply: `https://github.com/agus-enc/nopipeline.git`, the current folder, and the newest tag.
 

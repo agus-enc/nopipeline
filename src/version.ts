@@ -4,12 +4,13 @@ import { fileURLToPath } from "node:url";
 /** The folder above `src/`. */
 const packageRoot = fileURLToPath(new URL("..", import.meta.url));
 
+/** The parsed file, or null when it is missing, unreadable or not JSON. */
 async function readJson(file: string): Promise<{ version?: unknown } | null> {
   try {
     return JSON.parse(await readFile(file, "utf8")) as { version?: unknown };
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
-    throw error;
+    // A missing, unreadable or malformed file only costs the label; a run never aborts over it.
+    return null;
   }
 }
 

@@ -19,9 +19,6 @@ Recommends:     xdg-utils
 nopipeline keeps an Obsidian vault and a Notion database in sync in both
 directions, and keeps the links between notes working.
 
-# The tarball already holds the production dependencies, so nothing is built.
-%global debug_package %{nil}
-
 %prep
 %autosetup
 

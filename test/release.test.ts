@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
-import { checkRelease } from "../scripts/release.ts";
+import { checkRelease, fetchOrigin } from "../scripts/release.ts";
 import { tempDir } from "./helpers/tmp.ts";
 
 const SIGNERS = "releases ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample\n";
@@ -113,9 +113,47 @@ test("a .release-signers with a comment, blank lines or CRLF is a problem (the b
 });
 
 test("a changed build-source.sh warns with the previous tag, and is not a problem", async (t) => {
-  const { result } = await run(t, { [DIFF]: new Error("exit 1") });
+  const { result } = await run(t, { [DIFF]: exitWith(1) });
   assert.deepEqual(result.problems, []);
   assert.deepEqual(result.warnings, ["packaging/build-source.sh changed since v0.1.0: update the Copr package's script before building"]);
+});
+
+const exitWith = (code: number) => Object.assign(new Error(`exit ${code}`), { code });
+
+test("a build-source.sh comparison that fails for another reason is a problem, not the changed warning", async (t) => {
+  const { result } = await run(t, { [DIFF]: exitWith(128) });
+  assert.deepEqual(result.warnings, []);
+  assert.equal(result.problems.length, 1);
+  assert.match(result.problems[0]!, /comparison failed/);
+  assert.match(result.problems[0]!, /v0\.1\.0/);
+});
+
+test("an exit code 1 from the diff is the changed warning", async (t) => {
+  const { result } = await run(t, { [DIFF]: exitWith(1) });
+  assert.deepEqual(result.problems, []);
+  assert.equal(result.warnings.length, 1);
+});
+
+test("a missing origin/main is a problem, not a stack trace", async (t) => {
+  const { result } = await run(t, { "git rev-parse origin/main": exitWith(128) });
+  assert.equal(result.problems.length, 1);
+  assert.match(result.problems[0]!, /origin\/main/);
+});
+
+test("a .release-signers with CRLF line endings gets its own message", async (t) => {
+  const { result } = await run(t, {}, { signers: "releases ssh-ed25519 AAAA\r\n" });
+  assert.equal(result.problems.length, 1);
+  assert.match(result.problems[0]!, /Windows line endings \(CRLF\); save it with LF/);
+});
+
+test("fetchOrigin returns null on success and a problem line when the fetch fails", async () => {
+  const seen: string[][] = [];
+  assert.equal(await fetchOrigin(async (args) => (seen.push(args), "")), null);
+  assert.deepEqual(seen, [["fetch", "origin", "--tags"]]);
+  const problem = await fetchOrigin(async () => {
+    throw exitWith(128);
+  });
+  assert.match(problem ?? "", /git fetch origin --tags failed/);
 });
 
 test("no previous tag means no warning and no diff", async (t) => {
