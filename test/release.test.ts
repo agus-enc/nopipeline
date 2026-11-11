@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { chmod, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { execFileSync } from "node:child_process";
 import { test } from "node:test";
-import { checkRelease, fetchOrigin, webhookLocation } from "../scripts/release.ts";
+import { checkRelease, fetchOrigin, shellPath, webhookLocation } from "../scripts/release.ts";
 import { tempDir } from "./helpers/tmp.ts";
 
 const SIGNERS = "releases ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample\n";
@@ -23,12 +24,12 @@ const happy: Record<string, string | Error> = {
   [DIFF]: "",
 };
 
-async function run(t: import("node:test").TestContext, over: Record<string, string | Error> = {}, opts: { signers?: string | null; changelog?: string; version?: string; webhook?: string | null; mode?: number; xdg?: boolean } = {}) {
+async function run(t: import("node:test").TestContext, over: Record<string, string | Error> = {}, opts: { signers?: string | null; changelog?: string; version?: string; webhook?: string | null; mode?: number; xdg?: boolean; homeName?: string } = {}) {
   const root = await tempDir(t);
   await writeFile(join(root, "package.json"), JSON.stringify({ version: opts.version ?? "0.2.0" }));
   await writeFile(join(root, "CHANGELOG.md"), opts.changelog ?? "# Changelog\n\n## 0.2.0 — 2026-11-07\n\n- x\n\n## 0.1.0 — 2026-10-01\n");
   if (opts.signers !== null) await writeFile(join(root, ".release-signers"), opts.signers ?? SIGNERS);
-  const home = join(root, "home");
+  const home = join(root, opts.homeName ?? "home");
   const cfg = opts.xdg ? join(root, "xdg", "nopipeline") : join(home, ".config", "nopipeline");
   const webhookPath = join(cfg, "copr-webhook");
   if (opts.webhook !== null) {
@@ -229,4 +230,38 @@ test("webhookLocation uses XDG_CONFIG_HOME when set, else ~/.config", () => {
   assert.equal(webhookLocation({ XDG_CONFIG_HOME: "/x/cfg" }, "/h").path, "/x/cfg/nopipeline/copr-webhook");
   assert.equal(webhookLocation({}, "/h").path, "/h/.config/nopipeline/copr-webhook");
   assert.equal(webhookLocation({ XDG_CONFIG_HOME: "" }, "/h").path, "/h/.config/nopipeline/copr-webhook");
+});
+
+test("the printed command reads the right file even when HOME has a space and a quote", async (t) => {
+  for (const homeName of ["my home", "it's home", "a$b;c(d)&e`f"]) {
+    const { result, root } = await run(t, {}, { homeName, webhook: "https://copr.fedorainfracloud.org/webhooks/custom/1/x/\n" });
+    assert.deepEqual(result.problems, [], homeName);
+    const cmd = result.commands[2]!.replace("curl -fsS -X POST", "printf %s");
+    const out = execFileSync("sh", ["-c", cmd], { env: { HOME: join(root, homeName), PATH: process.env.PATH }, encoding: "utf8" });
+    assert.equal(out, "https://copr.fedorainfracloud.org/webhooks/custom/1/x/", homeName);
+  }
+});
+
+test("the part after ~/ is single-quoted when it has unsafe characters, and the printed form reads the file", async (t) => {
+  const home = await tempDir(t);
+  const rel = "My Config/it's $x;`y`(z)&/copr-webhook";
+  const path = join(home, rel);
+  await mkdir(join(path, ".."), { recursive: true });
+  await writeFile(path, "ok");
+  const printed = shellPath({ path, home });
+  assert.ok(printed.startsWith("~/'"), printed);
+  const out = execFileSync("sh", ["-c", `printf %s "$(cat ${printed})"`], { env: { HOME: home, PATH: process.env.PATH }, encoding: "utf8" });
+  assert.equal(out, "ok");
+});
+
+test("a folder named ..foo under HOME is still printed with ~", () => {
+  assert.equal(shellPath({ path: "/h/..foo/copr-webhook", home: "/h" }), "~/..foo/copr-webhook");
+  assert.equal(shellPath({ path: "/other/copr-webhook", home: "/h" }), "/other/copr-webhook");
+});
+
+test("a webhook file with Windows line endings is a problem and the content is not printed", async (t) => {
+  const { result } = await run(t, {}, { webhook: `${URL_TEXT}\r\n` });
+  assert.equal(result.problems.length, 1);
+  assert.match(result.problems[0]!, /has Windows line endings \(CRLF\)/);
+  assert.ok(!JSON.stringify(result).includes("SECRETSECRET"));
 });

@@ -20,11 +20,14 @@ export function webhookLocation(env: Record<string, string | undefined>, home: s
   return { path: join(base, "nopipeline", "copr-webhook"), home };
 }
 
-/** The path as typed in a shell: `~/...` under home, else absolute (single-quoted when it has unusual characters). */
-function shellPath({ path, home }: Webhook): string {
+/** Single-quotes `text` when it has anything outside a safe set. */
+const quote = (text: string): string => (/^[A-Za-z0-9._/@+-]+$/.test(text) ? text : `'${text.replaceAll("'", "'\\''")}'`);
+
+/** The path as typed in a shell: `~/...` under home (the rest quoted if needed), else absolute (quoted if needed). */
+export function shellPath({ path, home }: Webhook): string {
   const rel = relative(home, path);
-  if (rel !== "" && !rel.startsWith("..") && !isAbsolute(rel)) return `~/${rel}`;
-  return /^[\w./@+-]+$/.test(path) ? path : `'${path.replaceAll("'", "'\\''")}'`;
+  if (rel !== "" && rel !== ".." && !rel.startsWith("../") && !isAbsolute(rel)) return `~/${quote(rel)}`;
+  return quote(path);
 }
 
 export async function checkRelease(
@@ -86,13 +89,15 @@ export async function checkRelease(
   }
   if (mode !== null) {
     if ((mode & 0o077) !== 0) problems.push(`${webhook.path} is readable by others; chmod 600 it`);
-    let text = "";
+    let raw = "";
     try {
-      text = (await readFile(webhook.path, "utf8")).trim();
+      raw = await readFile(webhook.path, "utf8");
     } catch {
       // an unreadable file cannot hold a valid URL; reported below
     }
-    if (!text.startsWith(WEBHOOK_PREFIX) || /\s/.test(text)) problems.push(`${webhook.path} doesn't look like a Copr custom webhook URL`);
+    const text = raw.trim();
+    if (raw.includes("\r")) problems.push(`${webhook.path} has Windows line endings (CRLF); save it with LF`);
+    else if (!text.startsWith(WEBHOOK_PREFIX) || /\s/.test(text)) problems.push(`${webhook.path} doesn't look like a Copr custom webhook URL`);
   }
 
   const tags = ((await safe(["tag", "--list", "v[0-9]*.[0-9]*.[0-9]*", "--sort=-v:refname"])) ?? "")

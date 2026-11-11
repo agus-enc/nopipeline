@@ -90,15 +90,6 @@ The project is `chipp/nopipeline`, with the chroots fedora-43 and fedora-44, eac
 | Build dependencies | `git-core nodejs-npm openssh-clients tar` |
 | Result directory | `.` |
 
-The script is stored in Copr as a full copy with the key filled in, never as a stub that fetches repo code. Make the copy and check the placeholder is gone:
-
-```bash
-copy="$(mktemp)"
-sed "s|@RELEASE_SIGNERS@|$(cat .release-signers)|" packaging/build-source.sh > "$copy"
-grep -c '@RELEASE_SIGNERS@' "$copy"    # prints 0
-grep -c "^ALLOWED_SIGNERS='releases ssh-ed25519 " "$copy"    # prints 1 (an empty .release-signers must not pass)
-```
-
 ### The build webhook
 
 Builds are started with the package's custom webhook, not `copr-cli`, because the webhook URL does not expire (Copr API tokens do, every 180 days). Store the URL once: in Copr open the project, then Settings, then Integrations, and copy the "Custom webhook" URL for the package `nopipeline`. Then:
@@ -115,6 +106,15 @@ and paste the URL into that file with an editor (use `$XDG_CONFIG_HOME` instead 
 The API token (`~/.config/copr`, from <https://copr.fedorainfracloud.org/api/>) is needed only to change the stored script (`copr-cli edit-package-custom`) or to add the package the first time. It expires every 180 days; renew it on that page.
 
 ### Updating the stored script
+
+The script is stored in Copr as a full copy with the key filled in, never as a stub that fetches repo code. Make the copy and check the placeholder is gone:
+
+```bash
+copy="$(mktemp)"
+sed "s|@RELEASE_SIGNERS@|$(cat .release-signers)|" packaging/build-source.sh > "$copy"
+grep -c '@RELEASE_SIGNERS@' "$copy"    # prints 0
+grep -c "^ALLOWED_SIGNERS='releases ssh-ed25519 " "$copy"    # prints 1 (an empty .release-signers must not pass)
+```
 
 To update the stored script, upload the new copy (flags as in the Copr docs; see `copr-cli edit-package-custom --help`):
 
