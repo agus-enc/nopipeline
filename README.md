@@ -33,6 +33,8 @@ The tool never creates or changes a database in Notion. It links the ones you al
    sudo dnf install nopipeline
    ```
 
+   If `dnf copr` is not available, install the plugin first (`sudo dnf install dnf5-plugins` on current Fedora); see [How to enable a Copr repo](https://docs.copr.fedorainfracloud.org/how_to_enable_repo.html).
+
    Other Linux: from source. The project's `.npmrc` blocks install scripts and pins exact versions:
 
    ```bash

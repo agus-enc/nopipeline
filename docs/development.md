@@ -21,18 +21,20 @@ A release is a signed git tag `vX.Y.Z`. Copr builds the Fedora package only from
 
 ### The release key
 
-The key is an SSH key used only to sign tags, kept at `~/.ssh/nopipeline_release_ed25519`. Its public half is in the repo as `.release-signers`, in git's [allowed signers format](https://man.archlinux.org/man/ssh-keygen.1#ALLOWED_SIGNERS): exactly one line, the principal `releases`, then the key, with no email:
+The key is an SSH key used only to sign tags, kept at `~/.ssh/nopipeline_release_ed25519`. Its public half is in the repo as `.release-signers`, in git's [allowed signers format](https://man.archlinux.org/man/ssh-keygen.1#ALLOWED_SIGNERS): exactly one line, the principal `releases`, then the key, with no email and no comment after the key (the build script rejects one):
 
 ```
 releases ssh-ed25519 AAAA…
 ```
 
-Tell git to sign tags with it:
+Tell git to sign tags with it. Point `user.signingkey` at the private key file (not the `.pub`; the public file works only when the key is loaded in ssh-agent, see [git-config](https://git-scm.com/docs/git-config#Documentation/git-config.txt-usersigningKey)). Set it for this repository only, so other repositories keep their own settings:
 
 ```bash
-git config user.signingkey ~/.ssh/nopipeline_release_ed25519.pub
-git config gpg.format ssh
+git config --local gpg.format ssh
+git config --local user.signingkey ~/.ssh/nopipeline_release_ed25519
 ```
+
+Or pass it for one tag: `git -c gpg.format=ssh -c user.signingkey=~/.ssh/nopipeline_release_ed25519 tag -s …`.
 
 The same line is pasted into the Copr package's script (see [Packaging](#packaging)). The build trusts that copy, never the one in the repo.
 
@@ -89,15 +91,16 @@ The project is `chipp/nopipeline`, with the chroots fedora-43 and fedora-44, eac
 The script is stored in Copr as a full copy with the key filled in, never as a stub that fetches repo code. Make the copy and check the placeholder is gone:
 
 ```bash
-sed "s|@RELEASE_SIGNERS@|$(cat .release-signers)|" packaging/build-source.sh > /tmp/build-source.copr.sh
-grep -c '@RELEASE_SIGNERS@' /tmp/build-source.copr.sh    # prints 0
+copy="$(mktemp)"
+sed "s|@RELEASE_SIGNERS@|$(cat .release-signers)|" packaging/build-source.sh > "$copy"
+grep -c '@RELEASE_SIGNERS@' "$copy"    # prints 0
 ```
 
 To update the stored script, upload the new copy (flags as in the Copr docs; see `copr-cli edit-package-custom --help`):
 
 ```bash
 copr-cli edit-package-custom chipp/nopipeline --name nopipeline \
-  --script /tmp/build-source.copr.sh \
+  --script "$copy" \
   --script-builddeps "git-core nodejs-npm openssh-clients tar" \
   --script-resultdir .
 ```

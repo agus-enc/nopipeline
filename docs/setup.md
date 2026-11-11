@@ -23,6 +23,8 @@ sudo dnf copr enable chipp/nopipeline
 sudo dnf install nopipeline
 ```
 
+If `dnf copr` is not available, install the plugin first (`sudo dnf install dnf5-plugins` on current Fedora); see [How to enable a Copr repo](https://docs.copr.fedorainfracloud.org/how_to_enable_repo.html).
+
 This puts a `nopipeline` command on your path. Updates come with `sudo dnf upgrade` (see [Updating](../README.md#updating)).
 
 ### Other Linux: from source
