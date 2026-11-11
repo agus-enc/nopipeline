@@ -138,7 +138,9 @@ test("the Arch recipe is rendered", { skip }, async (t) => {
   const sha256 = createHash("sha256").update(await readFile(join(result, "nopipeline.tar.gz"))).digest("hex");
   assert.ok(pkgbuild.includes(`\nsha256sums=('${sha256}')\n`), "sha256 of the tarball");
   const install = await readFile(join(result, "nopipeline.install"), "utf8");
-  assert.match(install, /pacman-key --populate nopipeline/);
+  for (const fn of ["post_install", "post_upgrade"]) {
+    assert.match(install, new RegExp(`^${fn}\\(\\) \\{\\n  pacman-key --populate nopipeline \\|\\|\\n`, "m"), `${fn} runs the populate with a fallback`);
+  }
 });
 
 test("a tag without packaging/arch renders no Arch files", { skip }, async (t) => {

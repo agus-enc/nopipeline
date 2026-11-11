@@ -1,18 +1,17 @@
 # Loads the package's repo key into pacman's keyring (pacman-key(8), "Providing a Keyring for Import": --populate reads
 # /usr/share/pacman/keyrings/nopipeline.gpg and nopipeline-trusted). The key is what lets pacman check this repository's
-# signed packages. If pacman's keyring is not set up yet, the install still succeeds and says what to run.
-populate_key() {
-  if pacman-key --list-keys >/dev/null 2>&1; then
-    pacman-key --populate nopipeline
-  else
-    echo "nopipeline: pacman's keyring is not initialised; run: pacman-key --init && pacman-key --populate nopipeline" >&2
-  fi
-}
+# signed packages. If --populate fails (for example pacman's keyring is not initialised), the install still goes on and
+# the message says what to run.
+#
+# Removal does not untrust the key: it stays in pacman's keyring, locally signed and with owner trust 4, like the keys of
+# most third-party keyring packages. To drop it, run: pacman-key --delete <fingerprint>
 
 post_install() {
-  populate_key
+  pacman-key --populate nopipeline ||
+    echo "nopipeline: could not load the repo key; run: pacman-key --init && pacman-key --populate nopipeline" >&2
 }
 
 post_upgrade() {
-  populate_key
+  pacman-key --populate nopipeline ||
+    echo "nopipeline: could not load the repo key; run: pacman-key --init && pacman-key --populate nopipeline" >&2
 }

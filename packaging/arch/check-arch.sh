@@ -77,6 +77,14 @@ pacman-key --list-keys "$fpr"
 pacman-key --list-sigs "$fpr" | tee /tmp/sigs
 grep -q 'check-arch' /tmp/sigs
 grep -Eq '^sig +L .*Pacman Keyring Master Key' /tmp/sigs || { echo "check-arch: the throwaway key is not locally signed" >&2; exit 1; }
+# when pacman-key --populate fails, the scriptlets print the hint and still succeed
+mkdir /tmp/fake
+printf '#!/bin/sh\nexit 1\n' >/tmp/fake/pacman-key
+chmod +x /tmp/fake/pacman-key
+for fn in post_install post_upgrade; do
+  out=$(PATH=/tmp/fake:$PATH sh -c '. /src/nopipeline.install; '"$fn" 2>&1)
+  printf '%s\n' "$out" | grep -q 'could not load the repo key' || { echo "check-arch: no hint from $fn" >&2; exit 1; }
+done
 # an upgrade (reinstall) runs post_upgrade without failing
 pacman -U --noconfirm "$pkg"
 INNER
