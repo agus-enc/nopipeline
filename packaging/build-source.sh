@@ -9,6 +9,8 @@
 # tarball under nopipeline-<version>/keys/. Unset or empty: no keys folder.
 # If the tag has packaging/debian/, the Debian recipe for OBS is also written: nopipeline.dsc, debian.control,
 # debian.rules and debian.changelog (the dsc carries the tarball's checksums, so it is rendered after the tarball).
+# If the tag has packaging/arch/, the Arch recipe for OBS is also written: PKGBUILD (with the tarball's sha256) and
+# nopipeline.install.
 #
 # Only a tag signed by the release key can produce a build. The key is the line below, filled in when this script is
 # pasted into Copr. It is never read from the repository, so a tampered repository cannot change which key is trusted.
@@ -178,6 +180,17 @@ if [ -d "$tree/packaging/debian" ]; then
     fail "cannot render the Debian changelog"
   cp -- "$deb/debian.control" "$deb/debian.rules" "$out/" || fail "cannot copy the Debian files"
   chmod 755 "$out/debian.rules"
+fi
+
+# The Arch recipe for OBS. Only a tag that carries packaging/arch/ gets one; the tarball's sha256 goes into the PKGBUILD.
+if [ -d "$tree/packaging/arch" ]; then
+  arch="$tree/packaging/arch"
+  sha256=$(node -e '
+    const { createHash } = require("node:crypto");
+    console.log(createHash("sha256").update(require("node:fs").readFileSync(process.argv[1])).digest("hex"));
+  ' "$out/nopipeline.tar.gz") || fail "cannot checksum the tarball"
+  sed -e "s/@VERSION@/$version/g" -e "s/@SHA256@/$sha256/g" "$arch/PKGBUILD.in" >"$out/PKGBUILD" || fail "cannot render the PKGBUILD"
+  cp -- "$arch/nopipeline.install" "$out/" || fail "cannot copy nopipeline.install"
 fi
 
 mkdir -p -- "$result" || fail "cannot create $result"

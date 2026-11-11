@@ -96,6 +96,7 @@ Both scripts repeat the verification lines (the bootstrap must be self-contained
 - runs `npm ci --omit=dev --ignore-scripts` and `npm audit signatures`;
 - writes `version.json` (version and commit) into the tarball, and `nopipeline.tar.gz`, `version` (one line) and `nopipeline.spec` (from `packaging/fedora/nopipeline.spec.in`, with the version, date and one `Provides: bundled(nodejs-…)` line per shipped dependency). If `NOPIPELINE_REPO_KEYS=<dir>` is set, the three repo key files in it are added to the tarball under `keys/` (any other entry fails the build). The rpm needs no Node to build and has no `%check`; the container checks run the installed package.
 - when the tag has `packaging/debian/`, also writes the Debian recipe for OBS: `nopipeline.dsc` (from `nopipeline.dsc.in`, with `Version: X.Y.Z-1` and the tarball's sha256, md5 and size, computed with `node`), `debian.control`, `debian.rules` and `debian.changelog` (from `debian.changelog.in`, dated with `date -R`). OBS's [debtransform](https://github.com/openSUSE/obs-build/blob/master/debtransform) puts each `debian.<name>` file at `debian/<name>` on top of the tarball named by `Debtransform-Tar:`. Old tags without that folder build as before.
+- when the tag has `packaging/arch/`, also writes the Arch recipe for OBS: `PKGBUILD` (from `PKGBUILD.in`, with the version and the tarball's sha256) and `nopipeline.install`, which runs `pacman-key --populate nopipeline` on install and upgrade (guarded: if pacman's keyring is not initialised it prints a hint instead of failing). The package ships `keys/nopipeline.gpg` and `keys/nopipeline-trusted` in `/usr/share/pacman/keyrings/`; [pacman-key(8)](https://man.archlinux.org/man/pacman-key.8) says `--populate` reads `<name>.gpg` and the optional `<name>-trusted` (gpg ownertrust format) and `<name>-revoked` there.
 
 It (and the bootstrap) call these tools: `git`, `ssh-keygen` (through git's SSH signature check), `node`, `npm`, `tar`, `sed`, `grep`, `head`, `tr`, `date`, `env`, `mktemp`, `realpath`, and `sh`, `rm`, `mkdir`, `cp` and `mv`. It trusts the `PATH` it runs with, which is fine on Copr, whose build chroot controls `PATH`; do not run it with a `PATH` you do not control.
 
@@ -104,6 +105,10 @@ It takes optional arguments (`[<git-url> [<result-dir> [<tag>]]]`). On Copr it r
 ### Checking the Debian recipe
 
 `packaging/debian/check-deb.sh` (manual, run from the repository root after committing; needs Docker, gpg, curl and the network) builds the OBS source from `HEAD` with a throwaway repo key, lays out `debian/` as debtransform would, builds the `.deb` in `ubuntu:26.04`, and installs and runs it in `ubuntu:26.04` and `debian:13`. Both get Node 22.x from NodeSource (the same deb822 file its [setup script](https://deb.nodesource.com/setup_22.x) writes), because the distributions' own `nodejs` is built without TypeScript support and cannot run `src/cli.ts`.
+
+### Checking the Arch recipe
+
+`packaging/arch/check-arch.sh` (manual, run from the repository root after committing; needs Docker, gpg, curl and the network) builds the OBS source from `HEAD` with a throwaway repo key, then in an `archlinux` container runs `pacman -Syu`, builds the package with `makepkg` as a normal user, installs it with `pacman -U`, runs `nopipeline --version`, and checks the throwaway key is in pacman's keyring, locally signed. Arch's own `nodejs` supports TypeScript, so it is the Node under test.
 
 ### The Copr project
 

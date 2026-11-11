@@ -34,6 +34,15 @@ function debianTree(version: string): Record<string, string> {
   return files;
 }
 
+const archFiles = ["PKGBUILD.in", "nopipeline.install"];
+function archTree(version: string): Record<string, string> {
+  const files = tree(version);
+  for (const name of archFiles) {
+    files[`packaging/arch/${name}`] = readFileSync(fileURLToPath(new URL(`../../packaging/arch/${name}`, import.meta.url)), "utf8");
+  }
+  return files;
+}
+
 const tagged = (name: string, sign: TagSpec["sign"]): TagSpec => ({ name, sign, files: tree(name.replace(/^v/, "")) });
 
 async function build(
@@ -111,6 +120,33 @@ test("a tag without packaging/debian renders no Debian files", { skip }, async (
 });
 
 const keyNames = ["nopipeline-archive-keyring.gpg", "nopipeline.gpg", "nopipeline-trusted"];
+test("the Arch recipe is rendered", { skip }, async (t) => {
+  const { run, result, listing } = await build(t, [{ name: "v0.2.0", sign: "release" }], { files: archTree("0.2.0") });
+  assert.equal(run.status, 0, run.stderr);
+  assert.deepEqual(listing, ["PKGBUILD", "nopipeline.install", "nopipeline.spec", "nopipeline.tar.gz", "version"]);
+  for (const name of ["PKGBUILD", "nopipeline.install"]) {
+    assert.doesNotMatch(await readFile(join(result, name), "utf8"), /@[A-Z0-9_]+@/, `no placeholder is left in ${name}`);
+  }
+  const pkgbuild = await readFile(join(result, "PKGBUILD"), "utf8");
+  assert.match(pkgbuild, /^pkgname=nopipeline$/m);
+  assert.match(pkgbuild, /^pkgver=0\.2\.0$/m);
+  assert.match(pkgbuild, /^pkgrel=1$/m);
+  assert.match(pkgbuild, /^arch=\('any'\)$/m);
+  assert.match(pkgbuild, /^depends=\('nodejs>=22\.22'\)$/m);
+  assert.match(pkgbuild, /^source=\('nopipeline\.tar\.gz'\)$/m);
+  assert.match(pkgbuild, /^install=nopipeline\.install$/m);
+  const sha256 = createHash("sha256").update(await readFile(join(result, "nopipeline.tar.gz"))).digest("hex");
+  assert.ok(pkgbuild.includes(`\nsha256sums=('${sha256}')\n`), "sha256 of the tarball");
+  const install = await readFile(join(result, "nopipeline.install"), "utf8");
+  assert.match(install, /pacman-key --populate nopipeline/);
+});
+
+test("a tag without packaging/arch renders no Arch files", { skip }, async (t) => {
+  const { run, listing } = await build(t, [{ name: "v0.2.0", sign: "release" }]);
+  assert.equal(run.status, 0, run.stderr);
+  assert.deepEqual(listing, ["nopipeline.spec", "nopipeline.tar.gz", "version"]);
+});
+
 async function keysDir(t: import("node:test").TestContext, names = keyNames): Promise<string> {
   const dir = join(await tempDir(t), "keys");
   await mkdir(dir);

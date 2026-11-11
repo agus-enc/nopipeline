@@ -1,0 +1,87 @@
+#!/bin/sh
+# Manual check of the Arch recipe (not part of npm test). Builds the OBS source from the current HEAD tree in a throwaway
+# signed repo, with a throwaway OpenPGP repo key standing in for the OBS one, then in an archlinux container builds the
+# package with makepkg as a normal user, installs it with pacman -U, runs it, and checks that pacman's keyring now holds
+# the throwaway key, locally signed.
+# Needs git, ssh-keygen, gpg, curl, npm, Docker, and the network (npm, the container image, Arch mirrors).
+# It builds from `git archive HEAD`: commit your changes before running it. Touches only temp folders.
+# Run from the repository root: packaging/arch/check-arch.sh
+#
+# The container runs a full `pacman -Syu`: a partial upgrade (-Sy) breaks the image's nodejs (libcrypto mismatch).
+set -eu
+
+[ -f packaging/build-source.sh ] || { echo "check-arch: run this from the repository root" >&2; exit 1; }
+
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+# Same rule as build-source.sh: git must not depend on the caller's configuration.
+for name in $(env | sed -n 's/^\(GIT_[A-Za-z0-9_]*\)=.*/\1/p'); do unset "$name"; done
+export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null GIT_CONFIG_NOSYSTEM=1
+
+step() { printf '\n== %s\n' "$*"; }
+version=$(node -p "require('./package.json').version")
+
+step "throwaway repo key (OpenPGP, in a temporary GNUPGHOME) served to obs-key.sh through file://"
+mkdir -m 700 "$work/gnupg"
+GNUPGHOME="$work/gnupg" gpg --batch --quiet --passphrase '' --quick-generate-key 'check-arch <check-arch@example.invalid>' ed25519 sign never
+fpr=$(GNUPGHOME="$work/gnupg" gpg --batch --with-colons --list-keys | awk -F: '$1=="fpr"{print $10; exit}')
+GNUPGHOME="$work/gnupg" gpg --batch --quiet --export "$fpr" >"$work/repo-key.gpg"
+sh packaging/obs-key.sh "file://$work/repo-key.gpg" "$fpr" "$work/obs"
+ls -l "$work/obs/keys"
+
+step "throwaway signing key and signed repo for v$version (from the current HEAD tree)"
+ssh-keygen -q -N '' -t ed25519 -f "$work/key"
+mkdir "$work/repo"
+git archive HEAD | tar -x -C "$work/repo"
+git -C "$work/repo" init --quiet --initial-branch=main
+git -C "$work/repo" add -A
+git -C "$work/repo" -c user.name=Check -c user.email=check@example.com commit --quiet -m "check"
+git -C "$work/repo" -c user.name=Check -c user.email=check@example.com -c gpg.format=ssh -c "user.signingkey=$work/key" \
+  tag -s -m "v$version" "v$version"
+
+step "build-source.sh with the throwaway key and the throwaway repo key"
+signer="releases $(cut -d' ' -f1,2 "$work/key.pub")"
+sed "s|@RELEASE_SIGNERS@|$signer|" packaging/build-source.sh >"$work/build-source.sh"
+mkdir "$work/src"
+NOPIPELINE_REPO_KEYS="$work/obs/keys" sh "$work/build-source.sh" "$work/repo" "$work/src"
+ls -l "$work/src"
+for f in PKGBUILD nopipeline.install nopipeline.tar.gz; do
+  [ -f "$work/src/$f" ] || { echo "check-arch: build-source.sh did not write $f" >&2; exit 1; }
+done
+cat "$work/src/PKGBUILD"
+
+# Runs inside archlinux as root: build as a normal user, install, run, check the keyring.
+cat >"$work/check.sh" <<'INNER'
+set -eu
+fpr=$1
+pacman-key --init
+pacman -Syu --noconfirm --needed base-devel nodejs
+echo "nodejs: $(node --version)"
+useradd -m builder
+mkdir /home/builder/pkg
+cp /src/PKGBUILD /src/nopipeline.install /src/nopipeline.tar.gz /home/builder/pkg/
+chown -R builder /home/builder/pkg
+su builder -c 'cd /home/builder/pkg && makepkg -f --noconfirm'
+pkg=$(ls /home/builder/pkg/nopipeline-*-any.pkg.tar.*)
+pacman -Qip "$pkg"
+pacman -U --noconfirm "$pkg"
+node --version
+nopipeline --version
+nopipeline --help >/dev/null
+[ "$(stat -c %a /usr/bin/nopipeline)" = 755 ]
+for f in nopipeline.gpg nopipeline-trusted; do
+  [ "$(stat -c %a "/usr/share/pacman/keyrings/$f")" = 644 ] || { echo "check-arch: bad mode on $f" >&2; exit 1; }
+done
+pacman-key --list-keys "$fpr"
+# the throwaway key is in pacman's keyring and carries a local signature (lsign) from the keyring's master key
+pacman-key --list-sigs "$fpr" | tee /tmp/sigs
+grep -q 'check-arch' /tmp/sigs
+grep -Eq '^sig +L .*Pacman Keyring Master Key' /tmp/sigs || { echo "check-arch: the throwaway key is not locally signed" >&2; exit 1; }
+# an upgrade (reinstall) runs post_upgrade without failing
+pacman -U --noconfirm "$pkg"
+INNER
+
+step "archlinux: makepkg, pacman -U, run, keyring"
+docker run --rm -v "$work/src:/src:ro,z" -v "$work/check.sh:/check.sh:ro,z" archlinux:latest sh /check.sh "$fpr"
+
+step "all checks passed"

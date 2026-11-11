@@ -1,0 +1,18 @@
+# Loads the package's repo key into pacman's keyring (pacman-key(8), "Providing a Keyring for Import": --populate reads
+# /usr/share/pacman/keyrings/nopipeline.gpg and nopipeline-trusted). The key is what lets pacman check this repository's
+# signed packages. If pacman's keyring is not set up yet, the install still succeeds and says what to run.
+populate_key() {
+  if pacman-key --list-keys >/dev/null 2>&1; then
+    pacman-key --populate nopipeline
+  else
+    echo "nopipeline: pacman's keyring is not initialised; run: pacman-key --init && pacman-key --populate nopipeline" >&2
+  fi
+}
+
+post_install() {
+  populate_key
+}
+
+post_upgrade() {
+  populate_key
+}

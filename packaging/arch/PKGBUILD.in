@@ -1,0 +1,29 @@
+# Rendered into the OBS source by packaging/build-source.sh: the version and the tarball's sha256 are filled in at build time.
+pkgname=nopipeline
+pkgver=@VERSION@
+pkgrel=1
+pkgdesc='Two-way sync between an Obsidian vault and a Notion database'
+arch=('any')
+url='https://github.com/agus-enc/nopipeline'
+license=('MIT')
+depends=('nodejs>=22.22')
+optdepends=('libnotify: notifications' 'xdg-utils: opening reports')
+source=('nopipeline.tar.gz')
+sha256sums=('@SHA256@')
+install=nopipeline.install
+
+package() {
+  cd "$srcdir/nopipeline-$pkgver"
+  install -d "$pkgdir/usr/share/nopipeline" "$pkgdir/usr/bin" "$pkgdir/usr/share/pacman/keyrings" \
+    "$pkgdir/usr/share/doc/nopipeline" "$pkgdir/usr/share/licenses/nopipeline"
+  cp -a src node_modules package.json package-lock.json version.json "$pkgdir/usr/share/nopipeline/"
+  printf '%s\n' '#!/bin/sh' 'exec /usr/bin/node /usr/share/nopipeline/src/cli.ts "$@"' >"$pkgdir/usr/bin/nopipeline"
+  chmod 0755 "$pkgdir/usr/bin/nopipeline"
+  install -m 0644 keys/nopipeline.gpg "$pkgdir/usr/share/pacman/keyrings/nopipeline.gpg"
+  install -m 0644 keys/nopipeline-trusted "$pkgdir/usr/share/pacman/keyrings/nopipeline-trusted"
+  install -m 0644 LICENSE "$pkgdir/usr/share/licenses/nopipeline/LICENSE"
+  install -m 0644 node_modules/@notionhq/client/LICENSE "$pkgdir/usr/share/licenses/nopipeline/LICENSE.notionhq-client"
+  install -m 0644 node_modules/node-diff3/LICENSE.md "$pkgdir/usr/share/licenses/nopipeline/LICENSE.node-diff3"
+  install -m 0644 README.md CHANGELOG.md "$pkgdir/usr/share/doc/nopipeline/"
+  cp -a docs "$pkgdir/usr/share/doc/nopipeline/"
+}
