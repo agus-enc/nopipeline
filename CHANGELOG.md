@@ -2,7 +2,7 @@
 
 Newest first. Each section lists what a user notices.
 
-## 0.2.0 — 2026-11-07
+## 0.2.0 — 2026-11-11
 
 - Installable on Fedora from Copr, and updated with `dnf upgrade`.
 - `nopipeline --version` shows the version.
