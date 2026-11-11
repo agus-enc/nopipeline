@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { readdir, readFile } from "node:fs/promises";
+import { chmod, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import { scriptWith, signedRepo, toolsAvailable, type TagSpec } from "../helpers/signed-repo.ts";
@@ -26,13 +26,14 @@ const tagged = (name: string, sign: TagSpec["sign"]): TagSpec => ({ name, sign, 
 async function build(
   t: import("node:test").TestContext,
   tags: TagSpec[],
-  opts: { files?: Record<string, string>; tag?: string; env?: Record<string, string> } = {},
+  opts: { files?: Record<string, string>; tag?: string; env?: Record<string, string>; shell?: string; envFor?: (dir: string) => Promise<Record<string, string>> } = {},
 ) {
   const { url, signersLine } = await signedRepo(t, opts.files ?? tree("0.2.0"), tags);
   const script = scriptWith(signersLine);
   const result = join(await tempDir(t), "result");
   const args = [url, result, ...(opts.tag ? [opts.tag] : [])];
-  const run = spawnSync("bash", [script, ...args], { encoding: "utf8", env: { ...process.env, NOPIPELINE_SKIP_AUDIT: "1", ...opts.env } });
+  const extra = opts.envFor ? await opts.envFor(await tempDir(t)) : {};
+  const run = spawnSync(opts.shell ?? "/bin/sh", [script, ...args], { encoding: "utf8", env: { ...process.env, NOPIPELINE_SKIP_AUDIT: "1", ...opts.env, ...extra } });
   const listing = await readdir(result).catch(() => null);
   return { run, result, listing };
 }
@@ -56,7 +57,7 @@ test("a tag signed with the release key builds", { skip }, async (t) => {
 test("the build records the tag's commit", { skip }, async (t) => {
   const { url, signersLine } = await signedRepo(t, tree("0.2.0"), [{ name: "v0.2.0", sign: "release" }]);
   const result = join(await tempDir(t), "r");
-  const run = spawnSync("bash", [scriptWith(signersLine), url, result], { encoding: "utf8", env: { ...process.env, NOPIPELINE_SKIP_AUDIT: "1" } });
+  const run = spawnSync("/bin/sh", [scriptWith(signersLine), url, result], { encoding: "utf8", env: { ...process.env, NOPIPELINE_SKIP_AUDIT: "1" } });
   assert.equal(run.status, 0, run.stderr);
   const head = spawnSync("git", ["-C", url, "rev-parse", "v0.2.0^{commit}"], { encoding: "utf8" }).stdout.trim();
   const extract = await tempDir(t);
@@ -122,7 +123,7 @@ test("npm ci failing stops the build", { skip }, async (t) => {
 test("an unfilled release key stops the build", { skip }, async (t) => {
   const { url } = await signedRepo(t, tree("0.2.0"), [{ name: "v0.2.0", sign: "release" }]);
   const result = join(await tempDir(t), "r");
-  const run = spawnSync("bash", [join(repo, "packaging/build-source.sh"), url, result], { encoding: "utf8" });
+  const run = spawnSync("/bin/sh", [join(repo, "packaging/build-source.sh"), url, result], { encoding: "utf8" });
   assert.notEqual(run.status, 0);
   assert.match(run.stderr, /^build-source: the release key was not filled in/m);
 });
@@ -139,7 +140,10 @@ test("NOPIPELINE_SKIP_AUDIT is refused when the tree has dependencies", { skip }
   files["package.json"] = JSON.stringify({ name: "nopipeline", version: "0.2.0", dependencies: { left: "1.0.0" } });
   files["package-lock.json"] = JSON.stringify({
     name: "nopipeline", version: "0.2.0", lockfileVersion: 3, requires: true,
-    packages: { "": { name: "nopipeline", version: "0.2.0", dependencies: { left: "1.0.0" } } },
+    packages: {
+      "": { name: "nopipeline", version: "0.2.0", dependencies: { left: "1.0.0" } },
+      "node_modules/left": { version: "1.0.0", resolved: "https://registry.npmjs.org/left/-/left-1.0.0.tgz" },
+    },
   });
   const { run, listing } = await build(t, [{ name: "v0.2.0", sign: "release" }], { files, env: { NOPIPELINE_SKIP_AUDIT: "1" } });
   assert.notEqual(run.status, 0);
@@ -151,4 +155,68 @@ test("the tracked script holds the placeholder and reads no key from the repo", 
   const text = await readFile(join(repo, "packaging/build-source.sh"), "utf8");
   assert.equal(text.split("@RELEASE_SIGNERS@").length - 1, 1);
   assert.ok(!text.includes(".release-signers"));
+});
+
+// A fake ssh-keygen that vouches for any signature.
+async function fakeSigner(dir: string): Promise<string> {
+  const program = join(dir, "fake-ssh-keygen");
+  await writeFile(program, '#!/bin/sh\ncase "$*" in *find-principals*) echo releases;; *) echo \'Good "git" signature for releases with ED25519 key SHA256:forged\';; esac\nexit 0\n');
+  await chmod(program, 0o755);
+  return program;
+}
+
+test("git config in the environment cannot replace the signature verifier (GIT_CONFIG_COUNT)", { skip }, async (t) => {
+  const { run, listing } = await build(t, [{ name: "v0.2.0", sign: "other" }], {
+    envFor: async (dir) => ({ GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "gpg.ssh.program", GIT_CONFIG_VALUE_0: await fakeSigner(dir) }),
+  });
+  assert.notEqual(run.status, 0);
+  assert.match(run.stderr, /^build-source: v0\.2\.0 is not signed by the release key/m);
+  assert.equal(listing, null);
+});
+
+test("git config in the environment cannot replace the signature verifier (GIT_CONFIG_PARAMETERS)", { skip }, async (t) => {
+  const { run, listing } = await build(t, [{ name: "v0.2.0", sign: "other" }], {
+    envFor: async (dir) => ({ GIT_CONFIG_PARAMETERS: `'gpg.ssh.program=${await fakeSigner(dir)}'` }),
+  });
+  assert.notEqual(run.status, 0);
+  assert.match(run.stderr, /^build-source: v0\.2\.0 is not signed by the release key/m);
+  assert.equal(listing, null);
+});
+
+test("an optional dependency does not let NOPIPELINE_SKIP_AUDIT through", { skip }, async (t) => {
+  const files = tree("0.2.0");
+  files["package.json"] = JSON.stringify({ name: "nopipeline", version: "0.2.0", dependencies: {}, optionalDependencies: { left: "1.0.0" } });
+  files["package-lock.json"] = JSON.stringify({
+    name: "nopipeline", version: "0.2.0", lockfileVersion: 3, requires: true,
+    packages: {
+      "": { name: "nopipeline", version: "0.2.0", optionalDependencies: { left: "1.0.0" } },
+      "node_modules/left": { version: "1.0.0", resolved: "https://registry.npmjs.org/left/-/left-1.0.0.tgz", optional: true },
+    },
+  });
+  const { run, listing } = await build(t, [{ name: "v0.2.0", sign: "release" }], { files });
+  assert.notEqual(run.status, 0);
+  assert.match(run.stderr, /^build-source: NOPIPELINE_SKIP_AUDIT is only allowed/m);
+  assert.equal(listing, null);
+});
+
+const dash = spawnSync("which", ["dash"], { stdio: "ignore" }).status === 0;
+test("the script runs under dash", { skip: skip || (dash ? false : "dash is not installed") }, async (t) => {
+  const { run, listing } = await build(t, [{ name: "v0.2.0", sign: "release" }], { shell: "dash" });
+  assert.equal(run.status, 0, run.stderr);
+  assert.deepEqual(listing, ["nopipeline-0.2.0.tar.gz"]);
+});
+
+test("with no arguments the script clones the default repository into the current folder", { skip }, async (t) => {
+  const dir = await tempDir(t);
+  const bin = join(dir, "bin");
+  await mkdir(bin);
+  await writeFile(join(bin, "git"), '#!/bin/sh\necho "fake git $*" >&2\nexit 1\n');
+  await chmod(join(bin, "git"), 0o755);
+  const cwd = join(dir, "cwd");
+  await mkdir(cwd);
+  const { signersLine } = await signedRepo(t, tree("0.2.0"), [{ name: "v0.2.0", sign: "release" }]);
+  const run = spawnSync("/bin/sh", [scriptWith(signersLine)], { cwd, encoding: "utf8", env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } });
+  assert.notEqual(run.status, 0);
+  assert.match(run.stderr, /^build-source: cannot clone https:\/\/github\.com\/agus-enc\/nopipeline\.git/m);
+  assert.deepEqual(await readdir(cwd), []);
 });
