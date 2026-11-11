@@ -47,9 +47,13 @@ The tool never creates or changes a database in Notion. It links the ones you al
 
    **Debian, Ubuntu and derivatives.** The Node.js that Debian and Ubuntu ship can't run nopipeline: it is built without TypeScript support. First install Node.js 22.22 or newer from [NodeSource](https://github.com/nodesource/distributions) and follow their instructions. The `nopipeline` command tells you if it finds the wrong Node. Then add the repository. Set `dist` in the first command to `Debian_13`; on Ubuntu use `xUbuntu_24.04` or `xUbuntu_26.04`. For Linux Mint, Pop!_OS and other Ubuntu derivatives use the repository of the Ubuntu release they are based on; for other Debian derivatives use `Debian_13`. The package is architecture-independent and only needs `nodejs (>= 22.22)`.
 
+   Download the key first and check its fingerprint before you trust it: `gpg --show-keys` must print the 40 hex characters in [`packaging/obs-signing-key.fingerprint`](https://github.com/agus-enc/nopipeline/blob/main/packaging/obs-signing-key.fingerprint). Only then install it and add the repository:
+
    ```bash
    dist=Debian_13
-   curl -fsSL https://download.opensuse.org/repositories/home:/<user>:/nopipeline/$dist/Release.key | sudo gpg --dearmor --yes -o /usr/share/keyrings/nopipeline-archive-keyring.gpg
+   curl -fsSL https://download.opensuse.org/repositories/home:/<user>:/nopipeline/$dist/Release.key -o /tmp/nopipeline.key
+   gpg --show-keys /tmp/nopipeline.key      # compare the fingerprint with the file above
+   sudo gpg --dearmor --yes -o /usr/share/keyrings/nopipeline-archive-keyring.gpg /tmp/nopipeline.key
    sudo tee /etc/apt/sources.list.d/nopipeline.sources <<EOF
    Types: deb
    URIs: https://download.opensuse.org/repositories/home:/<user>:/nopipeline/$dist/
@@ -127,17 +131,28 @@ To go back to an older version: `sudo dnf downgrade nopipeline` (while the repos
 
 Before you remove the package (`dnf remove`, `apt remove` or `pacman -R`), remove what it set up: run `nopipeline auto uninstall` and `nopipeline launcher uninstall`, once for each profile you installed them for (add `--config <file>` for a profile other than the default). The package can't do that for you, because those files live in your home folder.
 
+Removing the package does not remove the repository you added. Remove it too, or the next update check complains about it:
+
+- **Debian, Ubuntu:** `sudo rm /etc/apt/sources.list.d/nopipeline.sources` (it points at a keyring that goes away with the package, so `apt update` would fail), then `sudo apt update`.
+- **Arch:** delete the `[home_<user>_nopipeline_Arch]` section from `/etc/pacman.conf` (and the key, see above).
+- **Fedora:** delete the `.repo` file that `dnf config-manager addrepo` saved in `/etc/yum.repos.d/` (`ls /etc/yum.repos.d | grep nopipeline`). To keep the file and only switch the repository off, use `sudo dnf config-manager setopt <repo id>.enabled=0`.
+
 From a clone, `git pull`, then `npm ci` and `npm audit signatures` again. The launcher and timer point at the clone, so they need no reinstall unless you move the folder.
 
 ## If the repository key has expired
 
 The repository is signed with a key that OBS renews about every two years, and each new package version carries the renewed key, so a system that keeps upgrading never notices. If you did not upgrade for a long time, the update fails with an expired-key error (`EXPKEYSIG` from apt, a signature error from dnf or pacman). Refresh the key once, then upgrade as usual:
 
-- **Debian, Ubuntu:** download the key again (with the same `dist` as above):
+- **Debian, Ubuntu:** download the key again. Set `dist` to the same value as when you installed (`Debian_13`, `xUbuntu_24.04` or `xUbuntu_26.04`); a fresh shell does not have it. The old keyring is only replaced when the download worked:
 
   ```bash
-  curl -fsSL https://download.opensuse.org/repositories/home:/<user>:/nopipeline/$dist/Release.key | sudo gpg --dearmor --yes -o /usr/share/keyrings/nopipeline-archive-keyring.gpg
+  dist=Debian_13
+  curl -fsSL https://download.opensuse.org/repositories/home:/<user>:/nopipeline/$dist/Release.key -o /tmp/nopipeline.key &&
+    gpg --show-keys /tmp/nopipeline.key &&
+    sudo gpg --dearmor --yes -o /usr/share/keyrings/nopipeline-archive-keyring.gpg /tmp/nopipeline.key
   ```
+
+  Compare the fingerprint `gpg --show-keys` prints with [`packaging/obs-signing-key.fingerprint`](https://github.com/agus-enc/nopipeline/blob/main/packaging/obs-signing-key.fingerprint).
 
 - **Fedora:** `sudo dnf clean all`, then upgrade again; dnf asks to import the repository key. If it still says the key expired, remove the old copy first (`rpm -qa 'gpg-pubkey*'` lists them; `sudo rpm -e <name>` removes one) and upgrade again.
 - **Arch:** `curl -fsSL "https://build.opensuse.org/projects/home:<user>:nopipeline/signing_keys/download?kind=gpg" | sudo pacman-key --add -`

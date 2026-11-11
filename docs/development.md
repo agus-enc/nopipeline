@@ -90,7 +90,9 @@ A failure stops everything after it. The OBS and Copr triggers come last, so not
 
 ### Re-running a failed run
 
-Re-run it from the Actions page ("Re-run failed jobs"). Every step is safe to repeat: if the release page already exists, the files are uploaded again with `--clobber` instead of creating a second release, and re-triggering OBS or Copr just rebuilds. A re-run does **not** refresh existing release notes. To change them, edit the section in `CHANGELOG.md` for the next release, or fix this release's page by hand:
+Re-run it from the Actions page ("Re-run failed jobs"). Every step is safe to repeat: if the release page already exists, `publish-release.sh` prints a notice and leaves it and its files alone (it never uploads over published files and never creates a second release), and re-triggering OBS or Copr just rebuilds. Releases are created the way GitHub recommends for immutable releases: `gh release create` with files makes a draft, uploads every file, then publishes ([gh source](https://github.com/cli/cli/blob/trunk/pkg/cmd/release/create/create.go)). The workflow runs one release at a time (`concurrency: release`, never cancelling a running one), so two tags pushed close together cannot mix their files.
+
+The Debian package has no `Debtransform-Release`, so an OBS rebuild of the same version republishes `X.Y.Z-1` with a different hash; apt can report a hash mismatch for a short while after a re-run. `apt update` again fixes it. `debian.rules` also refuses to build when `version.json` and `debian/changelog` name different versions. A re-run does **not** refresh existing release notes. To change them, edit the section in `CHANGELOG.md` for the next release, or fix this release's page by hand:
 
 ```bash
 node scripts/release.ts --notes > notes.md      # regenerate the notes (run it in a checkout of the tag)
@@ -101,7 +103,7 @@ gh release edit vX.Y.Z --notes-file notes.md
 
 ### When OBS fails to build
 
-The workflow ends at the trigger and does not wait for OBS, so a failed OBS build does not show in GitHub. After a push, look at the package on build.opensuse.org, or the repo's results with `osc results <project> nopipeline`. OBS can mail you about build failures; this is a per-user subscription. In the OBS web interface it is the page `https://build.opensuse.org/my/subscription`, with the build failure event, and it has e-mail and web channels ([OBS blog, 2022](https://openbuildservice.org/2022/12/07/build-failures-for-web-notifications); [notifications, 2020](https://openbuildservice.org/2020/04/27/notifications-round-two/)). I could not find current official documentation of which mails are on by default, so turn it on yourself when you set the project up (one-time setup, below). A failed build means a patch release: fix the recipe, push a new tag.
+The workflow ends at the trigger and does not wait for OBS, so a failed OBS build does not show in GitHub. After a push, look at the package on build.opensuse.org, or the repo's results with `osc results <project> nopipeline`. OBS can mail you about build failures; this is a per-user subscription. In the OBS web interface it is the page `https://build.opensuse.org/my/subscriptions` (also reachable from the avatar menu in the header, "Change your notifications", where "Build failure" is ticked under the build results section), with the build failure event, and it has e-mail and web channels ([OBS blog, 2022](https://openbuildservice.org/2022/12/07/build-failures-for-web-notifications); [notifications, 2020](https://openbuildservice.org/2020/04/27/notifications-round-two/)). I could not find current official documentation of which mails are on by default, so turn it on yourself when you set the project up (one-time setup, below). A failed build means a patch release: fix the recipe, push a new tag.
 
 ### What protects a release (trust model)
 
@@ -111,7 +113,9 @@ The workflow file and `build-source.sh` both run **from the tag itself**, so the
 - the tag ruleset allows only the repository admin to create, update or delete `v*` tags;
 - `RELEASE_SIGNERS` is an environment variable only the repository owner can change ([environments](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments): on a personal repository only the owner can configure one), so a commit cannot swap the trusted key.
 
-Whoever controls the GitHub account can publish packages: they can change these settings. This was accepted on purpose. The OBS token is limited to one package and one operation (run its source services), so a leaked token can only make OBS rebuild what is already on the release page.
+Whoever controls the GitHub account can publish packages: they can change these settings. This was accepted on purpose. Be clear about what else that means: anyone with `contents: write` on the repository (a collaborator, or a leaked token with that scope) can upload over release assets or create or move the "latest" release, and the tag ruleset does not cover releases. OBS downloads whatever `releases/latest/download/` serves, so **write access to releases is the ability to publish packages.** The OBS token itself is limited to one package and one operation (run its source services), but that only bounds the token, not what it rebuilds.
+
+The mitigation is GitHub's immutable releases (turn them on once, see the setup step below): after a release is published, its assets and tag can no longer be changed or deleted. "latest" can still be moved to another release, so a new bad release is possible for someone with write access; if that ever matters, the next step is versioned download URLs in `_service`.
 
 ## Packaging
 
@@ -123,7 +127,7 @@ The Arch repository's database is named `<project with ':' replaced by '_'>_<rep
 
 - `download_url` takes `protocol`, `host`, `port`, `path` (required), `filename`, `url` and a few switches, and `path` has no leading slash because the script builds `protocol://host/path` itself ([service definition](https://github.com/openSUSE/obs-service-download_url/blob/master/download_url.service), [script](https://github.com/openSUSE/obs-service-download_url/blob/master/download_url)). The script runs `wget`, which follows redirects by default (GitHub redirects `releases/latest/download/...` to its CDN); I read this from the source and did not run it against OBS, so the rehearsal is the first real test.
 - OBS serves a project's signing key at `https://build.opensuse.org/projects/<project>/signing_keys/download?kind=gpg`. Checked on 2026-11-11 with a read-only GET for the public project `graphics:darktable`: HTTP 200 and an armored `PGP PUBLIC KEY BLOCK`, the same key as `https://download.opensuse.org/repositories/graphics:/darktable/Fedora_43/repodata/repomd.xml.key`. `obs-key.sh --project` keeps using it.
-- Build paths in `project-meta.xml.in` are the `standard` repositories of `Fedora:43`, `Fedora:44`, `Debian:13`, `Ubuntu:24.04`, `Ubuntu:26.04` (x86_64 and aarch64) and `Arch:Community` (x86_64 only), as listed on their public OBS pages. Whether `standard` is the best path for the Ubuntu and Debian targets is untested until the first OBS build.
+- Build paths in `project-meta.xml.in` are the `standard` repositories of `Fedora:43`, `Fedora:44`, `Debian:13`, `Ubuntu:24.04`, `Ubuntu:26.04` (x86_64 and aarch64) and `Arch:Core` and `Arch:Extra` (x86_64 only; `Arch:Community` is not used: Arch merged its `community` repository into `extra` in 2023). The Arch pair is the one `home:manuelschneid3r` uses, read from that project's public meta page (which still lists `Arch:Community` as well). The others are as listed on their public OBS pages. Whether `standard` is the best path for the Ubuntu and Debian targets is untested until the first OBS build.
 
 ### One-time setup (outside the repo)
 
@@ -165,21 +169,23 @@ Done once by the owner, who types every credential. Nothing here is done by scri
    ```
 
 7. **Tag ruleset.** Settings, Rules, Rulesets, New ruleset, New tag ruleset. Target pattern `v*`; enable Restrict creations, Restrict updates and Restrict deletions; add the "Repository admin" role to the bypass list so you can still push release tags. Rulesets are available for public repositories on the GitHub Free plan ([About rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets)). If this ever turns out unavailable, the environment's tag rule and `RELEASE_SIGNERS` are the protection that remains.
-8. **Fill the two placeholders and commit:** `packaging/obs/project` (the project name) and `packaging/obs-signing-key.fingerprint` (the OBS signing key's primary fingerprint). Get the fingerprint from the key the project serves:
+8. **Fill the placeholders and commit:** `packaging/obs/project` (the project name) and `packaging/obs-signing-key.fingerprint` (the OBS signing key's primary fingerprint). Get the fingerprint from the key the project serves:
 
    ```bash
    curl -fsSL "https://build.opensuse.org/projects/home:<user>:nopipeline/signing_keys/download?kind=gpg" | gpg --show-keys --with-colons | awk -F: '/^fpr:/ {print $10; exit}'
    ```
 
-   and compare it with the signing key page of the project on build.opensuse.org before you commit it. Also replace every `home:<user>` and `home_<user>` in the README's install commands with the real OBS project; `node scripts/release.ts` reports a problem while `home:<user>` is still in `README.md`.
+   and compare it with the signing key page of the project on build.opensuse.org before you commit it. Also replace every `<user>` in the README's install commands (`home:<user>`, `home:/<user>:/` in URLs and `home_<user>_` in the pacman section) with the real OBS project; `node scripts/release.ts` reports a problem while `<user>` is still anywhere in `README.md`.
 
-`node scripts/release.ts` refuses to print the release commands while the two placeholders are still there.
+9. **Immutable releases.** In the repository settings, enable "Immutable releases" ([docs](https://docs.github.com/en/code-security/supply-chain-security/understanding-your-software-supply-chain/immutable-releases)). Once a release is published, its assets and tag cannot be changed or deleted, and the release gets an attestation. Do this before the first real release. Unconfirmed until the rehearsal: that `gh release create` with files (draft, upload, publish) works unchanged with it on; the docs name that order as the recommended one, and the rehearsal should publish one release with it on.
+
+`node scripts/release.ts` refuses to print the release commands while the three placeholders (the project file, the fingerprint file and the README's `<user>`) are still there.
 
 ### OBS repo key
 
 OBS signs the repositories with a key of the project, which expires about two years after the last time it was extended. A user whose copy has expired gets `EXPKEYSIG` and cannot download the package that carries the new key, so each package ships the key and refreshes the user's copy on upgrade.
 
-**The pin.** `packaging/obs-signing-key.fingerprint` holds the key's primary fingerprint. `packaging/obs-key.sh` downloads the key OBS serves, accepts it only if that fingerprint is its primary key (exit status 2 if the download holds no such key, 1 for any other failure), and keeps only that primary key with its user ID and self-signatures. An OBS extension keeps the same fingerprint, so it needs no commit.
+**The pin.** `packaging/obs-signing-key.fingerprint` holds the key's primary fingerprint. `packaging/obs-key.sh` downloads the key OBS serves, accepts it only if that fingerprint is its primary key (exit status 10 if the download holds no such key, 1 for any other failure; not 2, because `sh` and `awk` exit 2 on their own errors), and keeps only that primary key with its user ID and self-signatures. An OBS extension keeps the same fingerprint, so it needs no commit.
 
 **At release.** The workflow runs `obs-key.sh` and bakes the key into the packages: `/usr/share/keyrings/nopipeline-archive-keyring.gpg` (deb; dpkg replaces it on upgrade, and the user's `.sources` file points at it) and `/usr/share/pacman/keyrings/nopipeline.gpg` and `nopipeline-trusted` (Arch; the install script runs `pacman-key --populate nopipeline`). A mismatch or a download failure fails the release before anything is published. The rpm ships no key file: the `.repo` file from OBS points at the key on OBS (`gpgkey=…/repodata/repomd.xml.key`).
 
@@ -192,7 +198,9 @@ OBS signs the repositories with a key of the project, which expires about two ye
 - **"OBS repo key expires on YYYY-MM-DD"**: the shipped key expires within 90 days. The issue says whether OBS already serves the extended key (then tag a patch release, so the packages ship it) or has not extended it yet (then look at the project's signing keys on OBS).
 - **"OBS repo key changed"**: the key OBS serves no longer has the pinned fingerprint.
 
-It opens nothing if an open issue with the same title exists. If it cannot fetch something, it fails the run (GitHub mails the owner) and opens no issue. Each issue links to this section.
+It opens nothing if an open issue with the same title exists. If there is no release yet, or the latest release has no keyring asset (before the first OBS release), it prints a `::notice::` line and succeeds. If it cannot fetch something else, it fails the run (GitHub mails the owner) and opens no issue. Each issue links to this section.
+
+**Release notes.** The `CHANGELOG.md` section of the release that ships an extended key says so, and, while the Fedora behaviour above is unconfirmed, the notes of the release before the old expiry warn Fedora users ahead of it.
 
 **If the key changed.** Find out whether it was on purpose (OBS can replace a project's key; check the project's signing keys page and the OBS announcements). If not, treat it as an incident: do not release. If it was: put the new fingerprint in `packaging/obs-signing-key.fingerprint`, release a new version whose notes tell users to import the new key again (the README's expired-key commands do that), and remember that users on the old key must refresh it by hand, since a package signed with the new key cannot be verified with the old one.
 
@@ -230,7 +238,7 @@ All three recipes install the one `packaging/nopipeline-launcher.sh` as `/usr/bi
 
 ### Checking the Debian recipe
 
-`packaging/debian/check-deb.sh` (manual, run from the repository root after committing; needs Docker, gpg, curl and the network) builds the OBS source from `HEAD` with a throwaway repo key, lays out `debian/` as debtransform would, builds the `.deb` in `ubuntu:26.04`, installs and runs it in `ubuntu:26.04` and `debian:13`, and in `ubuntu:26.04` with the archive's own `nodejs` checks that `nopipeline --version` exits 1 with the TypeScript message. Both get Node 22.x from NodeSource (the same deb822 file its [setup script](https://deb.nodesource.com/setup_22.x) writes), because the distributions' own `nodejs` is built without TypeScript support and cannot run `src/cli.ts`.
+`packaging/debian/check-deb.sh` (manual, run from the repository root after committing; needs Docker, gpg, curl and the network) builds the OBS source from `HEAD` with a throwaway repo key, lays out `debian/` as debtransform would, builds the `.deb` in `ubuntu:26.04`, installs and runs it in `ubuntu:26.04` and `debian:13`, and in `ubuntu:26.04` with the archive's own `nodejs` checks that `nopipeline --version` exits 1 with the TypeScript message (or, if that Node now supports TypeScript, that it runs, and prints a note). Both get Node 22.x from NodeSource (the same deb822 file its [setup script](https://deb.nodesource.com/setup_22.x) writes), because the distributions' own `nodejs` is built without TypeScript support and cannot run `src/cli.ts`.
 
 ### Checking the Arch recipe
 
