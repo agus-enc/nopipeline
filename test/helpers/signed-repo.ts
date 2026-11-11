@@ -73,12 +73,12 @@ export async function signedRepo(
   return { url: repo, signersLine: `releases ${publicKey}`, gnupgHome };
 }
 
-/** Writes a copy of packaging/build-source.sh with the release key filled in (what is pasted into Copr). */
-export function scriptWith(signersLine: string): string {
+/** Writes a copy of a packaging script (default build-source.sh) with the release key filled in (what is pasted into Copr). */
+export function scriptWith(signersLine: string, name = "build-source.sh"): string {
   const dir = mkdtempSync(join(tmpdir(), "nopipeline-script-"));
   process.on("exit", () => rmSync(dir, { recursive: true, force: true }));
-  const text = readFileSync(join(repoRoot, "packaging/build-source.sh"), "utf8").replace("@RELEASE_SIGNERS@", signersLine);
-  const path = join(dir, "build-source.sh");
+  const text = readFileSync(join(repoRoot, "packaging", name), "utf8").replace("@RELEASE_SIGNERS@", signersLine);
+  const path = join(dir, name);
   writeFileSync(path, text, { mode: 0o755 });
   return path;
 }

@@ -8,7 +8,7 @@ import { promisify } from "node:util";
 
 type Git = (args: string[]) => Promise<string>;
 
-const SCRIPT = "packaging/build-source.sh";
+const SCRIPT = "packaging/copr-bootstrap.sh";
 const WEBHOOK_PREFIX = "https://copr.fedorainfracloud.org/webhooks/custom/";
 
 /** The webhook file (a secret URL): where it is, and the home folder used to print its path with `~`. */
@@ -73,7 +73,7 @@ export async function checkRelease(
   } catch {
     // reported below
   }
-  // Exactly what packaging/build-source.sh accepts: that one line, one trailing newline allowed, nothing else.
+  // Exactly what packaging/copr-bootstrap.sh accepts: that one line, one trailing newline allowed, nothing else.
   if (signers === null) problems.push(".release-signers is missing (it holds one line: releases ssh-ed25519 <public key>)");
   else if (signers.includes("\r")) problems.push(".release-signers has Windows line endings (CRLF); save it with LF");
   else if (!/^releases ssh-ed25519 [A-Za-z0-9+/=]+\n?$/.test(signers)) {

@@ -57,15 +57,25 @@ The newest heading must equal `version` in `package.json`; a test checks it.
    It checks that the tree is clean, you are on `main` and equal to `origin/main`, `package.json` and the changelog agree, the tag doesn't exist, `.release-signers` holds one valid line, and the Copr webhook file exists, is private and looks like a Copr webhook URL (it never prints the URL). It prints the problems it finds, or the commands to run. It never tags, pushes or builds.
 4. Run the printed commands, in order: `git tag -s vX.Y.Z -m "nopipeline X.Y.Z"`, `git push origin vX.Y.Z`, then `curl -fsS -X POST "$(cat ~/.config/nopipeline/copr-webhook)"`, which starts the Copr build through the project's custom webhook (the printed command has your real path, which follows `XDG_CONFIG_HOME`). The build always takes the newest signed tag, whatever the request says.
 
-It also warns when `packaging/build-source.sh` changed since the previous tag. If so, update the script stored in Copr before the build (see below).
+It also warns when `packaging/copr-bootstrap.sh` changed since the previous tag. If so, update the script stored in Copr before the build (see below). A change to `build-source.sh` needs no Copr update.
 
 A fix that only touches packaging is a new patch version, so the version always equals the tag. Copr always builds the newest `vX.Y.Z` tag; there are no pre-release tags.
 
 ## Packaging
 
+### What `copr-bootstrap.sh` does
+
+Copr limits a custom script to 4 kB and `build-source.sh` is bigger, so the script stored in Copr is the short `packaging/copr-bootstrap.sh` (POSIX `sh`, filled copy under 4 kB; a test checks this). It:
+
+- ignores every `GIT_*` variable and the machine's git configuration;
+- clones the repository, picks the newest `vX.Y.Z` tag, and checks the tag exactly as `build-source.sh` does (annotated, SSH signature valid for the key in its own `ALLOWED_SIGNERS` line, signed name equals the tag);
+- only then takes `packaging/build-source.sh` from that verified tag, fills in the same key, and runs it, which verifies the tag again and builds. Nothing from an unsigned tag is ever run.
+
+Both scripts repeat the verification lines (the bootstrap must be self-contained); a test checks they carry the same `verify-tag` flags and tag pattern. It takes optional arguments (`[<git-url> [<tag>]]`) for tests; on Copr it runs with none.
+
 ### What `build-source.sh` does
 
-`packaging/build-source.sh` is a POSIX `sh` script that Copr runs to make the source of an rpm. It:
+`packaging/build-source.sh` is a POSIX `sh` script that `copr-bootstrap.sh` runs, from the signed tag, to make the source of an rpm. It:
 
 - ignores every `GIT_*` variable and the machine's git configuration;
 - clones the repository and picks the newest `vX.Y.Z` tag;
@@ -75,7 +85,7 @@ A fix that only touches packaging is a new patch version, so the version always 
 - runs `npm ci --omit=dev --ignore-scripts` and `npm audit signatures`;
 - writes `version.json` (version and commit), `nopipeline-<version>.tar.gz` and `nopipeline.spec` (from `packaging/fedora/nopipeline.spec.in`, with the version, date and one `Provides: bundled(nodejs-…)` line per shipped dependency).
 
-It calls these tools: `git`, `ssh-keygen` (through git's SSH signature check), `node`, `npm`, `tar`, `sed`, `grep`, `head`, `tr`, `date`, `env`, `mktemp`, `realpath`, and `rm`, `mkdir` and `mv`. It trusts the `PATH` it runs with, which is fine on Copr, whose build chroot controls `PATH`; do not run it with a `PATH` you do not control.
+It (and the bootstrap) call these tools: `git`, `ssh-keygen` (through git's SSH signature check), `node`, `npm`, `tar`, `sed`, `grep`, `head`, `tr`, `date`, `env`, `mktemp`, `realpath`, and `rm`, `mkdir` and `mv`. It trusts the `PATH` it runs with, which is fine on Copr, whose build chroot controls `PATH`; do not run it with a `PATH` you do not control.
 
 It takes optional arguments (`[<git-url> [<result-dir> [<tag>]]]`). On Copr it runs with none, so the defaults apply: `https://github.com/agus-enc/nopipeline.git`, the current folder, and the newest tag.
 
@@ -86,7 +96,7 @@ The project is `chipp/nopipeline`, with the chroots fedora-43 and fedora-44, eac
 | Field | Value |
 | --- | --- |
 | Source type | Custom |
-| Script | `packaging/build-source.sh`, with `@RELEASE_SIGNERS@` replaced by the one line of `.release-signers` |
+| Script | `packaging/copr-bootstrap.sh`, with `@RELEASE_SIGNERS@` replaced by the one line of `.release-signers` |
 | Build dependencies | `git-core nodejs-npm openssh-clients tar` |
 | Result directory | `.` |
 
@@ -107,12 +117,13 @@ The API token (`~/.config/copr`, from <https://copr.fedorainfracloud.org/api/>) 
 
 ### Updating the stored script
 
-The script is stored in Copr as a full copy with the key filled in, never as a stub that fetches repo code. Make the copy and check the placeholder is gone:
+The script stored in Copr is a full copy of `copr-bootstrap.sh` with the key filled in; it trusts only the key in that copy, never anything from the repository. Only a change to that file or to the release key needs an update in Copr; `build-source.sh` changes ship with the next signed tag. Make the copy and check the placeholder is gone:
 
 ```bash
 copy="$(mktemp)"
-sed "s|@RELEASE_SIGNERS@|$(cat .release-signers)|" packaging/build-source.sh > "$copy"
+sed "s|@RELEASE_SIGNERS@|$(cat .release-signers)|" packaging/copr-bootstrap.sh > "$copy"
 grep -c '@RELEASE_SIGNERS@' "$copy"    # prints 0
+wc -c < "$copy"    # must be under 4096
 grep -c "^ALLOWED_SIGNERS='releases ssh-ed25519 " "$copy"    # prints 1 (an empty .release-signers must not pass)
 ```
 

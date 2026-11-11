@@ -8,7 +8,7 @@ import { tempDir } from "./helpers/tmp.ts";
 
 const SIGNERS = "releases ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample\n";
 const TAGS = "git tag --list v[0-9]*.[0-9]*.[0-9]* --sort=-v:refname";
-const DIFF = "git diff --quiet v0.1.0 HEAD -- packaging/build-source.sh";
+const DIFF = "git diff --quiet v0.1.0 HEAD -- packaging/copr-bootstrap.sh";
 
 const URL_TEXT = "https://copr.fedorainfracloud.org/webhooks/custom/12345/00000000-aaaa-bbbb-cccc-SECRETSECRET/nopipeline/";
 const CURL = 'curl -fsS -X POST "$(cat ~/.config/nopipeline/copr-webhook)"';
@@ -163,15 +163,15 @@ test("a .release-signers with a comment, blank lines or CRLF is a problem (the b
   assert.deepEqual(result.problems, [], "no trailing newline is fine");
 });
 
-test("a changed build-source.sh warns with the previous tag, and is not a problem", async (t) => {
+test("a changed copr-bootstrap.sh warns with the previous tag, and is not a problem", async (t) => {
   const { result } = await run(t, { [DIFF]: exitWith(1) });
   assert.deepEqual(result.problems, []);
-  assert.deepEqual(result.warnings, ["packaging/build-source.sh changed since v0.1.0: update the Copr package's script before building"]);
+  assert.deepEqual(result.warnings, ["packaging/copr-bootstrap.sh changed since v0.1.0: update the Copr package's script before building"]);
 });
 
 const exitWith = (code: number) => Object.assign(new Error(`exit ${code}`), { code });
 
-test("a build-source.sh comparison that fails for another reason is a problem, not the changed warning", async (t) => {
+test("a copr-bootstrap.sh comparison that fails for another reason is a problem, not the changed warning", async (t) => {
   const { result } = await run(t, { [DIFF]: exitWith(128) });
   assert.deepEqual(result.warnings, []);
   assert.equal(result.problems.length, 1);
