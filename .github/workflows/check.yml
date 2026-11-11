@@ -15,8 +15,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          # The whole history, for the UTC check below.
+          # The whole history, for the UTC check below; on a pull request, its own head, not GitHub's merge commit.
           fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       # Every commit's author and committer dates must be in UTC (+0000), so the history shows no time zone.
       # Commit with TZ=UTC set (for example `TZ=UTC git commit`).
       - name: Commits are in UTC
