@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { scriptWith, signedRepo, toolsAvailable, type TagSpec } from "../helpers/signed-repo.ts";
 import { tempDir } from "../helpers/tmp.ts";
+import { readFileSync } from "node:fs";
 
 const repo = new URL("../..", import.meta.url).pathname;
 const skip = toolsAvailable() ? false : "git and ssh-keygen are needed to make signed test tags";
@@ -18,6 +19,7 @@ function tree(version: string, lockVersion = version, dependencies: Record<strin
     "test/x.test.ts": "// test\n",
     "scripts/y.ts": "// script\n",
     ".gitattributes": "test/ export-ignore\nscripts/ export-ignore\n.github/ export-ignore\n",
+    "packaging/fedora/nopipeline.spec.in": readFileSync(new URL("../../packaging/fedora/nopipeline.spec.in", import.meta.url), "utf8"),
   };
 }
 
@@ -41,7 +43,12 @@ async function build(
 test("a tag signed with the release key builds", { skip }, async (t) => {
   const { run, result, listing } = await build(t, [{ name: "v0.2.0", sign: "release" }]);
   assert.equal(run.status, 0, run.stderr);
-  assert.deepEqual(listing, ["nopipeline-0.2.0.tar.gz"]);
+  assert.deepEqual(listing, ["nopipeline-0.2.0.tar.gz", "nopipeline.spec"]);
+  const spec = await readFile(join(result, "nopipeline.spec"), "utf8");
+  assert.match(spec, /^Version:\s+0\.2\.0$/m);
+  assert.doesNotMatch(spec, /@[A-Z]+@/, "no placeholder is left in the spec");
+  assert.match(spec, /^\* (Mon|Tue|Wed|Thu|Fri|Sat|Sun) [A-Z][a-z]{2} \d\d \d{4} nopipeline <noreply@github\.com> - 0\.2\.0-1$/m);
+  assert.doesNotMatch(spec, /^Provides: bundled/m, "a tree with no dependencies bundles nothing");
   const names = spawnSync("tar", ["-tzf", join(result, "nopipeline-0.2.0.tar.gz")], { encoding: "utf8" }).stdout.split("\n");
   assert.ok(names.includes("nopipeline-0.2.0/src/cli.ts"));
   assert.ok(names.includes("nopipeline-0.2.0/version.json"));
@@ -83,13 +90,13 @@ test("the newest release tag is picked in version order", { skip }, async (t) =>
     tagged("test", "none"),
   ]);
   assert.equal(run.status, 0, run.stderr);
-  assert.deepEqual(listing, ["nopipeline-0.10.0.tar.gz"]);
+  assert.deepEqual(listing, ["nopipeline-0.10.0.tar.gz", "nopipeline.spec"]);
 });
 
 test("a tag can be named", { skip }, async (t) => {
   const { run, listing } = await build(t, [tagged("v0.9.0", "release"), tagged("v0.10.0", "release")], { tag: "v0.9.0" });
   assert.equal(run.status, 0, run.stderr);
-  assert.deepEqual(listing, ["nopipeline-0.9.0.tar.gz"]);
+  assert.deepEqual(listing, ["nopipeline-0.9.0.tar.gz", "nopipeline.spec"]);
 });
 
 test("a tag name that is not a release tag is refused", { skip }, async (t) => {
@@ -203,7 +210,7 @@ const dash = spawnSync("which", ["dash"], { stdio: "ignore" }).status === 0;
 test("the script runs under dash", { skip: skip || (dash ? false : "dash is not installed") }, async (t) => {
   const { run, listing } = await build(t, [{ name: "v0.2.0", sign: "release" }], { shell: "dash" });
   assert.equal(run.status, 0, run.stderr);
-  assert.deepEqual(listing, ["nopipeline-0.2.0.tar.gz"]);
+  assert.deepEqual(listing, ["nopipeline-0.2.0.tar.gz", "nopipeline.spec"]);
 });
 
 test("with no arguments the script clones the default repository into the current folder", { skip }, async (t) => {

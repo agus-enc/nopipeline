@@ -55,7 +55,7 @@ version=${tag#v}
 
 [ "$(gitc cat-file -t "refs/tags/$tag" 2>/dev/null || true)" = tag ] ||
   fail "$tag is not signed by the release key (it is not an annotated tag)"
-verify_out=$(gitc -c gpg.format=ssh -c "gpg.ssh.allowedSignersFile=$work/allowed_signers" verify-tag "$tag" 2>&1) ||
+verify_out=$(gitc -c gpg.format=ssh -c gpg.ssh.program=ssh-keygen -c "gpg.ssh.allowedSignersFile=$work/allowed_signers" verify-tag "$tag" 2>&1) ||
   fail "$tag is not signed by the release key ($(printf '%s' "$verify_out" | tr '\n' ' '))"
 # A signed tag object could have been stored under another name; the signed name must be this one.
 [ "$(gitc cat-file tag "$tag" | sed -n 's/^tag //p;/^$/q' | head -n 1)" = "$tag" ] ||
@@ -94,7 +94,17 @@ tar --sort=name --owner=0 --group=0 --numeric-owner -czf "$out/nopipeline-$versi
 
 template="$tree/packaging/fedora/nopipeline.spec.in"
 if [ -f "$template" ]; then
-  sed "s/@VERSION@/$version/g" "$template" >"$out/nopipeline.spec" || fail "cannot render the spec"
+  date=$(LC_ALL=C TZ=UTC date '+%a %b %d %Y') || fail "cannot read the date"
+  # One Provides line per production package in the lockfile (dev-only packages are not installed), in lockfile order.
+  (cd "$tree" && node -e '
+    const packages = require("./package-lock.json").packages ?? {};
+    for (const [key, info] of Object.entries(packages)) {
+      if (key === "" || info.dev) continue;
+      process.stdout.write(`Provides:       bundled(nodejs-${key.slice(key.lastIndexOf("node_modules/") + 13)}) = ${info.version}\n`);
+    }
+  ') >"$work/bundled" || fail "cannot read the bundled packages from the lockfile"
+  sed -e "s/@VERSION@/$version/g" -e "s/@DATE@/$date/g" -e "/^@BUNDLED@\$/{r $work/bundled" -e d -e "}" "$template" >"$out/nopipeline.spec" ||
+    fail "cannot render the spec"
 fi
 
 mkdir -p -- "$result" || fail "cannot create $result"
