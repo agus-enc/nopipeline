@@ -1,0 +1,14 @@
+Format: 1.0
+Source: nopipeline
+Binary: nopipeline
+Architecture: all
+Version: @VERSION@-1
+Maintainer: nopipeline <noreply@github.com>
+Homepage: https://github.com/agus-enc/nopipeline
+Standards-Version: 4.7.0
+Build-Depends: debhelper-compat (= 13)
+Debtransform-Tar: nopipeline.tar.gz
+Files:
+ @MD5@ @SIZE@ nopipeline.tar.gz
+Checksums-Sha256:
+ @SHA256@ @SIZE@ nopipeline.tar.gz

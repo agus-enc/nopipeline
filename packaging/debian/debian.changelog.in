@@ -1,0 +1,5 @@
+nopipeline (@VERSION@-1) unstable; urgency=medium
+
+  * See CHANGELOG.md
+
+ -- nopipeline <noreply@github.com>  @DATE_RFC2822@

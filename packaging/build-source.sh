@@ -7,6 +7,8 @@
 # Output: nopipeline.tar.gz (top folder nopipeline-<version>/), nopipeline.spec and version (one line, X.Y.Z).
 # NOPIPELINE_REPO_KEYS=<dir> (optional) names a folder holding exactly the three repo key files; they are put into the
 # tarball under nopipeline-<version>/keys/. Unset or empty: no keys folder.
+# If the tag has packaging/debian/, the Debian recipe for OBS is also written: nopipeline.dsc, debian.control,
+# debian.rules and debian.changelog (the dsc carries the tarball's checksums, so it is rendered after the tarball).
 #
 # Only a tag signed by the release key can produce a build. The key is the line below, filled in when this script is
 # pasted into Copr. It is never read from the repository, so a tampered repository cannot change which key is trusted.
@@ -155,6 +157,27 @@ if [ -f "$template" ]; then
   ') >"$work/bundled" || fail "cannot read the bundled packages from the lockfile"
   sed -e "s/@VERSION@/$version/g" -e "s/@DATE@/$date/g" -e "/^@BUNDLED@\$/{r $work/bundled" -e d -e "}" "$template" >"$out/nopipeline.spec" ||
     fail "cannot render the spec"
+fi
+
+# The Debian recipe for OBS (debtransform maps debian.* to debian/*). Only a tag that carries packaging/debian/ gets one.
+if [ -d "$tree/packaging/debian" ]; then
+  deb="$tree/packaging/debian"
+  date_rfc=$(LC_ALL=C TZ=UTC date -R) || fail "cannot read the date"
+  sums=$(node -e '
+    const { createHash } = require("node:crypto");
+    const data = require("node:fs").readFileSync(process.argv[1]);
+    for (const algo of ["sha256", "md5"]) console.log(createHash(algo).update(data).digest("hex"));
+    console.log(data.length);
+  ' "$out/nopipeline.tar.gz") || fail "cannot checksum the tarball"
+  sha256=$(printf '%s\n' "$sums" | sed -n 1p)
+  md5=$(printf '%s\n' "$sums" | sed -n 2p)
+  size=$(printf '%s\n' "$sums" | sed -n 3p)
+  sed -e "s/@VERSION@/$version/g" -e "s/@SHA256@/$sha256/g" -e "s/@MD5@/$md5/g" -e "s/@SIZE@/$size/g" \
+    "$deb/nopipeline.dsc.in" >"$out/nopipeline.dsc" || fail "cannot render the dsc"
+  sed -e "s/@VERSION@/$version/g" -e "s/@DATE_RFC2822@/$date_rfc/g" "$deb/debian.changelog.in" >"$out/debian.changelog" ||
+    fail "cannot render the Debian changelog"
+  cp -- "$deb/debian.control" "$deb/debian.rules" "$out/" || fail "cannot copy the Debian files"
+  chmod 755 "$out/debian.rules"
 fi
 
 mkdir -p -- "$result" || fail "cannot create $result"

@@ -1,0 +1,15 @@
+Source: nopipeline
+Section: utils
+Priority: optional
+Maintainer: nopipeline <noreply@github.com>
+Standards-Version: 4.7.0
+Homepage: https://github.com/agus-enc/nopipeline
+Build-Depends: debhelper-compat (= 13)
+
+Package: nopipeline
+Architecture: all
+Depends: nodejs (>= 22.22), ${misc:Depends}
+Recommends: libnotify-bin, xdg-utils
+Description: Two-way sync between an Obsidian vault and a Notion database
+ nopipeline keeps an Obsidian vault and a Notion database in sync in both
+ directions, and keeps the links between notes working.

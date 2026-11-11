@@ -1,0 +1,23 @@
+#!/usr/bin/make -f
+# Rendered into the OBS source by packaging/build-source.sh. OBS maps debian.rules to debian/rules.
+# Nothing to build: the tarball already holds the source and the production node_modules.
+
+doc = debian/nopipeline/usr/share/doc/nopipeline
+
+%:
+	dh $@
+
+override_dh_auto_configure override_dh_auto_build override_dh_auto_test override_dh_auto_clean:
+
+override_dh_auto_install:
+	install -d debian/nopipeline/usr/share/nopipeline debian/nopipeline/usr/bin \
+	  debian/nopipeline/usr/share/keyrings $(doc)
+	cp -a src node_modules package.json package-lock.json version.json debian/nopipeline/usr/share/nopipeline/
+	printf '%s\n' '#!/bin/sh' 'exec /usr/bin/node /usr/share/nopipeline/src/cli.ts "$$@"' \
+	  >debian/nopipeline/usr/bin/nopipeline
+	chmod 0755 debian/nopipeline/usr/bin/nopipeline
+	install -m 0644 keys/nopipeline-archive-keyring.gpg debian/nopipeline/usr/share/keyrings/nopipeline-archive-keyring.gpg
+	install -m 0644 LICENSE $(doc)/LICENSE
+	install -m 0644 node_modules/@notionhq/client/LICENSE $(doc)/LICENSE.notionhq-client
+	install -m 0644 node_modules/node-diff3/LICENSE.md $(doc)/LICENSE.node-diff3
+	install -m 0644 README.md CHANGELOG.md $(doc)/

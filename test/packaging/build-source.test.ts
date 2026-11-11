@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { chmod, mkdir, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -22,6 +23,15 @@ function tree(version: string, lockVersion = version, dependencies: Record<strin
     ".gitattributes": "test/ export-ignore\nscripts/ export-ignore\n.github/ export-ignore\n",
     "packaging/fedora/nopipeline.spec.in": readFileSync(fileURLToPath(new URL("../../packaging/fedora/nopipeline.spec.in", import.meta.url)), "utf8"),
   };
+}
+
+const debianFiles = ["nopipeline.dsc.in", "debian.control", "debian.rules", "debian.changelog.in"];
+function debianTree(version: string): Record<string, string> {
+  const files = tree(version);
+  for (const name of debianFiles) {
+    files[`packaging/debian/${name}`] = readFileSync(fileURLToPath(new URL(`../../packaging/debian/${name}`, import.meta.url)), "utf8");
+  }
+  return files;
 }
 
 const tagged = (name: string, sign: TagSpec["sign"]): TagSpec => ({ name, sign, files: tree(name.replace(/^v/, "")) });
@@ -64,6 +74,40 @@ test("a tag signed with the release key builds", { skip }, async (t) => {
   const info = JSON.parse(await readFile(join(extract, "nopipeline-0.2.0/version.json"), "utf8")) as { version: string; commit: string };
   assert.equal(info.version, "0.2.0");
   assert.match(info.commit, /^[0-9a-f]{40}$/);
+});
+
+test("the Debian recipe is rendered", { skip }, async (t) => {
+  const { run, result, listing } = await build(t, [{ name: "v0.2.0", sign: "release" }], { files: debianTree("0.2.0") });
+  assert.equal(run.status, 0, run.stderr);
+  assert.deepEqual(listing, ["debian.changelog", "debian.control", "debian.rules", "nopipeline.dsc", "nopipeline.spec", "nopipeline.tar.gz", "version"]);
+  for (const name of ["nopipeline.dsc", "debian.control", "debian.rules", "debian.changelog"]) {
+    assert.doesNotMatch(await readFile(join(result, name), "utf8"), /@[A-Z0-9_]+@/, `no placeholder is left in ${name}`);
+  }
+  const dsc = await readFile(join(result, "nopipeline.dsc"), "utf8");
+  assert.match(dsc, /^Version: 0\.2\.0-1$/m);
+  assert.match(dsc, /^Source: nopipeline$/m);
+  assert.match(dsc, /^Debtransform-Tar: nopipeline\.tar\.gz$/m);
+  assert.match(dsc, /^Format: /m);
+  assert.doesNotMatch(dsc, /nodejs/i, "no Node in Build-Depends");
+  const tarball = await readFile(join(result, "nopipeline.tar.gz"));
+  const size = (await stat(join(result, "nopipeline.tar.gz"))).size;
+  assert.ok(dsc.includes(`\n ${createHash("sha256").update(tarball).digest("hex")} ${size} nopipeline.tar.gz\n`), "sha256 line");
+  assert.ok(dsc.includes(`\n ${createHash("md5").update(tarball).digest("hex")} ${size} nopipeline.tar.gz\n`), "md5 line");
+  const changelog = await readFile(join(result, "debian.changelog"), "utf8");
+  assert.equal(changelog.split("\n")[0], "nopipeline (0.2.0-1) unstable; urgency=medium");
+  assert.match(changelog, /^ -- nopipeline <noreply@github\.com>  (Mon|Tue|Wed|Thu|Fri|Sat|Sun), \d\d [A-Z][a-z]{2} \d{4} \d\d:\d\d:\d\d \+0000$/m);
+  const control = await readFile(join(result, "debian.control"), "utf8");
+  assert.match(control, /^Depends: nodejs \(>= 22\.22\), \$\{misc:Depends\}$/m);
+  assert.match(control, /^Architecture: all$/m);
+  assert.match(control, /^Recommends: libnotify-bin, xdg-utils$/m);
+  assert.doesNotMatch(control, /^Build-Depends:.*node/m);
+  assert.ok(((await stat(join(result, "debian.rules"))).mode & 0o111) !== 0, "debian.rules is executable");
+});
+
+test("a tag without packaging/debian renders no Debian files", { skip }, async (t) => {
+  const { run, listing } = await build(t, [{ name: "v0.2.0", sign: "release" }]);
+  assert.equal(run.status, 0, run.stderr);
+  assert.deepEqual(listing, ["nopipeline.spec", "nopipeline.tar.gz", "version"]);
 });
 
 const keyNames = ["nopipeline-archive-keyring.gpg", "nopipeline.gpg", "nopipeline-trusted"];

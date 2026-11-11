@@ -95,10 +95,15 @@ Both scripts repeat the verification lines (the bootstrap must be self-contained
 - builds from `git archive` of the tag, so files marked `export-ignore` in `.gitattributes` (`test/`, `scripts/`, `.github/`) are left out;
 - runs `npm ci --omit=dev --ignore-scripts` and `npm audit signatures`;
 - writes `version.json` (version and commit) into the tarball, and `nopipeline.tar.gz`, `version` (one line) and `nopipeline.spec` (from `packaging/fedora/nopipeline.spec.in`, with the version, date and one `Provides: bundled(nodejs-…)` line per shipped dependency). If `NOPIPELINE_REPO_KEYS=<dir>` is set, the three repo key files in it are added to the tarball under `keys/` (any other entry fails the build). The rpm needs no Node to build and has no `%check`; the container checks run the installed package.
+- when the tag has `packaging/debian/`, also writes the Debian recipe for OBS: `nopipeline.dsc` (from `nopipeline.dsc.in`, with `Version: X.Y.Z-1` and the tarball's sha256, md5 and size, computed with `node`), `debian.control`, `debian.rules` and `debian.changelog` (from `debian.changelog.in`, dated with `date -R`). OBS's [debtransform](https://github.com/openSUSE/obs-build/blob/master/debtransform) puts each `debian.<name>` file at `debian/<name>` on top of the tarball named by `Debtransform-Tar:`. Old tags without that folder build as before.
 
 It (and the bootstrap) call these tools: `git`, `ssh-keygen` (through git's SSH signature check), `node`, `npm`, `tar`, `sed`, `grep`, `head`, `tr`, `date`, `env`, `mktemp`, `realpath`, and `sh`, `rm`, `mkdir`, `cp` and `mv`. It trusts the `PATH` it runs with, which is fine on Copr, whose build chroot controls `PATH`; do not run it with a `PATH` you do not control.
 
 It takes optional arguments (`[<git-url> [<result-dir> [<tag>]]]`). On Copr it runs with none, so the defaults apply: `https://github.com/agus-enc/nopipeline.git`, the current folder, and the newest tag.
+
+### Checking the Debian recipe
+
+`packaging/debian/check-deb.sh` (manual, run from the repository root after committing; needs Docker, gpg, curl and the network) builds the OBS source from `HEAD` with a throwaway repo key, lays out `debian/` as debtransform would, builds the `.deb` in `ubuntu:26.04`, and installs and runs it in `ubuntu:26.04` and `debian:13`. Both get Node 22.x from NodeSource (the same deb822 file its [setup script](https://deb.nodesource.com/setup_22.x) writes), because the distributions' own `nodejs` is built without TypeScript support and cannot run `src/cli.ts`.
 
 ### The Copr project
 
