@@ -1,0 +1,4 @@
+<package name="nopipeline">
+  <title>nopipeline</title>
+  <description>Two-way sync between an Obsidian vault and a Notion database. The sources come from the signed GitHub release (see _service).</description>
+</package>

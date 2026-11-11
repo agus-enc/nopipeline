@@ -64,15 +64,23 @@ The newest heading must equal `version` in `package.json`; a test checks it.
    node scripts/release.ts
    ```
 
-   It checks that the tree is clean, you are on `main` and equal to `origin/main`, `package.json` and the changelog agree, the tag doesn't exist, `.release-signers` holds one valid line, and the Copr webhook file exists, is private and looks like a Copr webhook URL (it never prints the URL). It prints the problems it finds, or the commands to run (tag, push, Copr webhook, GitHub release). It never tags, pushes or builds.
-4. Run the printed commands, in order: `git tag -s vX.Y.Z -m "nopipeline X.Y.Z"`, `git push origin vX.Y.Z`, then `curl -fsS -X POST "$(cat ~/.config/nopipeline/copr-webhook)"`, which starts the Copr build through the project's custom webhook (the printed command has your real path, which follows `XDG_CONFIG_HOME`). The build always takes the newest signed tag, whatever the request says.
-5. The fourth printed command creates the GitHub release page: `node scripts/release.ts --notes | gh release create vX.Y.Z --verify-tag --title "nopipeline X.Y.Z" --notes-file -`. The notes come from the version's `CHANGELOG.md` section (`--notes` only prints them: no git calls, no checks; it prints a `problem:` line to stderr and exits 1 if the section is missing), followed by the Fedora install commands and the tag-verification command. `gh` must be logged in, and `--verify-tag` makes it refuse a tag that is not on GitHub yet, so push the tag first. The rpm is not attached on purpose: packages come from Copr, which signs them.
+   It checks that the tree is clean, you are on `main` and equal to `origin/main`, `package.json` and the changelog agree, the tag doesn't exist, `.release-signers` holds one valid line, and `packaging/obs/project` and `packaging/obs-signing-key.fingerprint` no longer hold their placeholders (`home:CHANGE-ME:nopipeline`, forty zeros). It also downloads the OBS repo key with `packaging/obs-key.sh` and prints when it expires; it warns when that is within 180 days (a download failure is only a warning). It prints the problems it finds, or the two commands to run. It never tags, pushes or builds.
+4. Run the printed commands, in order: `git tag -s vX.Y.Z -m "nopipeline X.Y.Z"` and `git push origin vX.Y.Z`. The pushed tag starts the release workflow, which publishes the GitHub release and starts the OBS build.
+5. The release notes come from `node scripts/release.ts --notes` (the workflow runs it): the version's `CHANGELOG.md` section, then the install commands per distro family built from the OBS project in `packaging/obs/project`, and the tag-verification command. `--notes` makes no git calls; it prints a `problem:` line to stderr and exits 1 if the section is missing or the OBS project or fingerprint is still a placeholder.
 
 It also warns when `packaging/copr-bootstrap.sh` changed since the previous tag. If so, update the script stored in Copr before the build (see below). A change to `build-source.sh` needs no Copr update, as long as it keeps its contract with the bootstrap: the arguments `[<git-url> [<result-dir> [<tag>]]]` and an `ALLOWED_SIGNERS=` assignment at the start of a line (the happy-path test in `test/packaging/copr-bootstrap.test.ts` enforces it).
 
 A fix that only touches packaging is a new patch version, so the version always equals the tag. Copr always builds the newest `vX.Y.Z` tag; there are no pre-release tags.
 
 ## Packaging
+
+### OBS project files (`packaging/obs/`)
+
+`project` holds the OBS project name (one line; the only place it is written). `_service` lists one `download_url` per file `build-source.sh` renders, each from `https://github.com/@REPO@/releases/latest/download/<name>`; `@REPO@` (`owner/repo`) is filled in when the file is uploaded to OBS, so a rehearsal repo works unchanged. `project-meta.xml.in` (with `@PROJECT@`) and `package-meta.xml` are the OBS metadata.
+
+- `download_url` takes `protocol`, `host`, `port`, `path` (required), `filename`, `url` and a few switches, and `path` has no leading slash because the script builds `protocol://host/path` itself ([service definition](https://github.com/openSUSE/obs-service-download_url/blob/master/download_url.service), [script](https://github.com/openSUSE/obs-service-download_url/blob/master/download_url)). The script runs `wget`, which follows redirects by default (GitHub redirects `releases/latest/download/...` to its CDN); I read this from the source and did not run it against OBS, so the rehearsal is the first real test.
+- OBS serves a project's signing key at `https://build.opensuse.org/projects/<project>/signing_keys/download?kind=gpg`. Checked on 2026-11-11 with a read-only GET for the public project `graphics:darktable`: HTTP 200 and an armored `PGP PUBLIC KEY BLOCK`, the same key as `https://download.opensuse.org/repositories/graphics:/darktable/Fedora_43/repodata/repomd.xml.key`. `obs-key.sh --project` keeps using it.
+- Build paths in `project-meta.xml.in` are the `standard` repositories of `Fedora:43`, `Fedora:44`, `Debian:13`, `Ubuntu:24.04`, `Ubuntu:26.04` (x86_64 and aarch64) and `Arch:Community` (x86_64 only), as listed on their public OBS pages. Whether `standard` is the best path for the Ubuntu and Debian targets is untested until the first OBS build.
 
 ### What `copr-bootstrap.sh` does
 

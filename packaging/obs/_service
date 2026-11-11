@@ -1,0 +1,50 @@
+<services>
+  <service name="download_url">
+    <param name="protocol">https</param>
+    <param name="host">github.com</param>
+    <param name="path">@REPO@/releases/latest/download/nopipeline.tar.gz</param>
+    <param name="filename">nopipeline.tar.gz</param>
+  </service>
+  <service name="download_url">
+    <param name="protocol">https</param>
+    <param name="host">github.com</param>
+    <param name="path">@REPO@/releases/latest/download/nopipeline.spec</param>
+    <param name="filename">nopipeline.spec</param>
+  </service>
+  <service name="download_url">
+    <param name="protocol">https</param>
+    <param name="host">github.com</param>
+    <param name="path">@REPO@/releases/latest/download/nopipeline.dsc</param>
+    <param name="filename">nopipeline.dsc</param>
+  </service>
+  <service name="download_url">
+    <param name="protocol">https</param>
+    <param name="host">github.com</param>
+    <param name="path">@REPO@/releases/latest/download/debian.control</param>
+    <param name="filename">debian.control</param>
+  </service>
+  <service name="download_url">
+    <param name="protocol">https</param>
+    <param name="host">github.com</param>
+    <param name="path">@REPO@/releases/latest/download/debian.rules</param>
+    <param name="filename">debian.rules</param>
+  </service>
+  <service name="download_url">
+    <param name="protocol">https</param>
+    <param name="host">github.com</param>
+    <param name="path">@REPO@/releases/latest/download/debian.changelog</param>
+    <param name="filename">debian.changelog</param>
+  </service>
+  <service name="download_url">
+    <param name="protocol">https</param>
+    <param name="host">github.com</param>
+    <param name="path">@REPO@/releases/latest/download/PKGBUILD</param>
+    <param name="filename">PKGBUILD</param>
+  </service>
+  <service name="download_url">
+    <param name="protocol">https</param>
+    <param name="host">github.com</param>
+    <param name="path">@REPO@/releases/latest/download/nopipeline.install</param>
+    <param name="filename">nopipeline.install</param>
+  </service>
+</services>

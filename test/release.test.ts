@@ -1,18 +1,14 @@
 import assert from "node:assert/strict";
-import { chmod, mkdir, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { test } from "node:test";
-import { checkRelease, fetchOrigin, releaseNotes, shellPath, webhookLocation } from "../scripts/release.ts";
+import { checkRelease, fetchOrigin, keyExpiryLine, obsRepoUrl, releaseNotes } from "../scripts/release.ts";
 import { tempDir } from "./helpers/tmp.ts";
 
 const SIGNERS = "releases ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample\n";
 const TAGS = "git tag --list v[0-9]*.[0-9]*.[0-9]* --sort=-v:refname";
 const DIFF = "git diff --quiet v0.1.0 HEAD -- packaging/copr-bootstrap.sh";
-
-const URL_TEXT = "https://copr.fedorainfracloud.org/webhooks/custom/12345/00000000-aaaa-bbbb-cccc-SECRETSECRET/nopipeline/";
-const CURL = 'curl -fsS -X POST "$(cat ~/.config/nopipeline/copr-webhook)"';
-const GH = 'node scripts/release.ts --notes | gh release create v0.2.0 --verify-tag --title "nopipeline 0.2.0" --notes-file -';
 
 const happy: Record<string, string | Error> = {
   "git status --porcelain": "",
@@ -25,19 +21,16 @@ const happy: Record<string, string | Error> = {
   [DIFF]: "",
 };
 
-async function run(t: import("node:test").TestContext, over: Record<string, string | Error> = {}, opts: { signers?: string | null; changelog?: string; version?: string; webhook?: string | null; mode?: number; xdg?: boolean; homeName?: string } = {}) {
+const FPR = "0123456789ABCDEF0123456789ABCDEF01234567";
+
+async function run(t: import("node:test").TestContext, over: Record<string, string | Error> = {}, opts: { signers?: string | null; changelog?: string; version?: string; project?: string | null; fingerprint?: string | null } = {}) {
   const root = await tempDir(t);
   await writeFile(join(root, "package.json"), JSON.stringify({ version: opts.version ?? "0.2.0" }));
   await writeFile(join(root, "CHANGELOG.md"), opts.changelog ?? "# Changelog\n\n## 0.2.0 — 2026-11-07\n\n- x\n\n## 0.1.0 — 2026-10-01\n");
   if (opts.signers !== null) await writeFile(join(root, ".release-signers"), opts.signers ?? SIGNERS);
-  const home = join(root, opts.homeName ?? "home");
-  const cfg = opts.xdg ? join(root, "xdg", "nopipeline") : join(home, ".config", "nopipeline");
-  const webhookPath = join(cfg, "copr-webhook");
-  if (opts.webhook !== null) {
-    await mkdir(cfg, { recursive: true });
-    await writeFile(webhookPath, opts.webhook ?? `${URL_TEXT}\n`);
-    await chmod(webhookPath, opts.mode ?? 0o600);
-  }
+  await mkdir(join(root, "packaging", "obs"), { recursive: true });
+  if (opts.project !== null) await writeFile(join(root, "packaging", "obs", "project"), opts.project ?? "home:someone:nopipeline\n");
+  if (opts.fingerprint !== null) await writeFile(join(root, "packaging", "obs-signing-key.fingerprint"), opts.fingerprint ?? `${FPR}\n`);
   const table = { ...happy, ...over };
   const calls: string[] = [];
   const git = async (args: string[]): Promise<string> => {
@@ -48,64 +41,37 @@ async function run(t: import("node:test").TestContext, over: Record<string, stri
     if (v instanceof Error) throw v;
     return v;
   };
-  return { result: await checkRelease(git, root, { path: webhookPath, home }), calls, root };
+  return { result: await checkRelease(git, root), calls, root };
 }
 
-test("the happy path returns the four commands for 0.2.0", async (t) => {
+test("the happy path returns exactly the tag and push commands for 0.2.0", async (t) => {
   const { result } = await run(t);
   assert.deepEqual(result.problems, []);
   assert.deepEqual(result.warnings, []);
   assert.equal(result.version, "0.2.0");
-  assert.deepEqual(result.commands, ['git tag -s v0.2.0 -m "nopipeline 0.2.0"', "git push origin v0.2.0", CURL, GH]);
+  assert.deepEqual(result.commands, ['git tag -s v0.2.0 -m "nopipeline 0.2.0"', "git push origin v0.2.0"]);
+  assert.equal(result.project, "home:someone:nopipeline");
+  assert.equal(result.fingerprint, FPR);
 });
 
-test("a webhook file outside HOME is printed with its absolute path", async (t) => {
-  const { result, root } = await run(t, {}, { xdg: true });
-  assert.deepEqual(result.problems, []);
-  assert.equal(result.commands[2], `curl -fsS -X POST "$(cat ${join(root, "xdg", "nopipeline", "copr-webhook")})"`);
-});
-
-test("a missing webhook file is a problem that says where to put the URL", async (t) => {
-  const { result } = await run(t, {}, { webhook: null });
+test("the placeholder OBS project is a problem and no key can be fetched", async (t) => {
+  const { result } = await run(t, {}, { project: "home:CHANGE-ME:nopipeline\n" });
   assert.equal(result.problems.length, 1);
-  assert.match(result.problems[0]!, /copr-webhook: put the project's custom webhook URL there \(Copr → Settings → Integrations\), mode 600/);
+  assert.match(result.problems[0]!, /packaging\/obs\/project/);
+  assert.equal(result.project, null);
 });
 
-test("a webhook file readable by group or others is a problem, 400 and 600 are fine", async (t) => {
-  for (const mode of [0o640, 0o644, 0o604, 0o660]) {
-    const { result } = await run(t, {}, { mode });
-    assert.equal(result.problems.length, 1, mode.toString(8));
-    assert.match(result.problems[0]!, /is readable by others; chmod 600 it/);
-  }
-  const { result } = await run(t, {}, { mode: 0o400 });
-  assert.deepEqual(result.problems, []);
+test("the all-zero key fingerprint is a problem", async (t) => {
+  const { result } = await run(t, {}, { fingerprint: "0".repeat(40) + "\n" });
+  assert.equal(result.problems.length, 1);
+  assert.match(result.problems[0]!, /obs-signing-key\.fingerprint/);
+  assert.equal(result.fingerprint, null);
 });
 
-test("a webhook file with spaces or blank lines around the URL is a problem (curl rejects a leading space)", async (t) => {
-  for (const webhook of [` ${URL_TEXT}\n`, `${URL_TEXT} \n`, `\t${URL_TEXT}`, `\n${URL_TEXT}\n`, `${URL_TEXT}\n\n`]) {
-    const { result } = await run(t, {}, { webhook });
-    assert.equal(result.problems.length, 1, JSON.stringify(webhook));
-    assert.match(result.problems[0]!, /has spaces or blank lines around the URL; it must hold only the URL/);
-    assert.ok(!result.problems[0]!.includes("SECRET"));
-  }
-  const { result } = await run(t, {}, { webhook: URL_TEXT });
-  assert.deepEqual(result.problems, [], "no trailing newline is fine");
-});
-
-test("a webhook file that is not a Copr custom webhook URL is a problem", async (t) => {
-  for (const webhook of ["", "\n", "http://copr.fedorainfracloud.org/webhooks/custom/1/x/", "https://example.com/webhooks/custom/1/x/", "token=abc"]) {
-    const { result } = await run(t, {}, { webhook });
-    assert.equal(result.problems.length, 1, JSON.stringify(webhook));
-    assert.match(result.problems[0]!, /doesn't look like a Copr custom webhook URL/);
-  }
-});
-
-test("the webhook URL never appears in problems or commands, even when the file is malformed", async (t) => {
-  const secret = "SUPERSECRETVALUE";
-  for (const [webhook, mode] of [[`${URL_TEXT}\n`, 0o600], [`${URL_TEXT}\n`, 0o644], [`https://evil.example/${secret}\n`, 0o600], [`${secret}\nsecond line ${URL_TEXT}\n`, 0o600]] as const) {
-    const { result } = await run(t, {}, { webhook, mode });
-    const out = JSON.stringify([result.problems, result.commands, result.warnings]);
-    assert.ok(!out.includes(secret) && !out.includes("SECRETSECRET") && !out.includes("12345"), JSON.stringify(webhook));
+test("a missing or malformed project or fingerprint file is a problem", async (t) => {
+  for (const o of [{ project: null }, { fingerprint: null }, { project: "two words\n" }, { fingerprint: "abc\n" }]) {
+    const { result } = await run(t, {}, o);
+    assert.equal(result.problems.length, 1, JSON.stringify(o));
   }
 });
 
@@ -238,82 +204,19 @@ test("the checker only reads: no tag, push or fetch call", async (t) => {
   for (const c of calls) assert.doesNotMatch(c, /^git (tag -s|push|fetch)/);
 });
 
-test("webhookLocation uses XDG_CONFIG_HOME when set, else ~/.config", () => {
-  assert.equal(webhookLocation({ XDG_CONFIG_HOME: "/x/cfg" }, "/h").path, "/x/cfg/nopipeline/copr-webhook");
-  assert.equal(webhookLocation({}, "/h").path, "/h/.config/nopipeline/copr-webhook");
-  assert.equal(webhookLocation({ XDG_CONFIG_HOME: "" }, "/h").path, "/h/.config/nopipeline/copr-webhook");
-});
-
-test("the printed command reads the right file even when HOME has a space and a quote", async (t) => {
-  for (const homeName of ["my home", "it's home", "a$b;c(d)&e`f"]) {
-    const { result, root } = await run(t, {}, { homeName, webhook: "https://copr.fedorainfracloud.org/webhooks/custom/1/x/\n" });
-    assert.deepEqual(result.problems, [], homeName);
-    const cmd = result.commands[2]!.replace("curl -fsS -X POST", "printf %s");
-    const out = execFileSync("sh", ["-c", cmd], { env: { HOME: join(root, homeName), PATH: process.env.PATH }, encoding: "utf8" });
-    assert.equal(out, "https://copr.fedorainfracloud.org/webhooks/custom/1/x/", homeName);
-  }
-});
-
-test("the part after ~/ is single-quoted when it has unsafe characters, and the printed form reads the file", async (t) => {
-  const home = await tempDir(t);
-  const rel = "My Config/it's $x;`y`(z)&/copr-webhook";
-  const path = join(home, rel);
-  await mkdir(join(path, ".."), { recursive: true });
-  await writeFile(path, "ok");
-  const printed = shellPath({ path, home });
-  assert.ok(printed.startsWith("~/'"), printed);
-  const out = execFileSync("sh", ["-c", `printf %s "$(cat ${printed})"`], { env: { HOME: home, PATH: process.env.PATH }, encoding: "utf8" });
-  assert.equal(out, "ok");
-});
-
-test("a folder named ..foo under HOME is still printed with ~", () => {
-  assert.equal(shellPath({ path: "/h/..foo/copr-webhook", home: "/h" }), "~/..foo/copr-webhook");
-  assert.equal(shellPath({ path: "/other/copr-webhook", home: "/h" }), "/other/copr-webhook");
-});
-
-test("a webhook file with Windows line endings is a problem and the content is not printed", async (t) => {
-  const { result } = await run(t, {}, { webhook: `${URL_TEXT}\r\n` });
-  assert.equal(result.problems.length, 1);
-  assert.match(result.problems[0]!, /has Windows line endings \(CRLF\)/);
-  assert.ok(!JSON.stringify(result).includes("SECRETSECRET"));
-});
-
+const PROJ = "home:someone:nopipeline";
 const LOG = "# Changelog\n\nNewest first.\n\n## 0.3.0 — 2026-12-01\n\n- three\n- more\n\n## 0.2.0 — 2026-11-11\n\n- two\n\n\n## 0.1.0 — 2026-10-01\n\n- one\n";
 
 test("releaseNotes extracts the section of the asked version, trimmed", () => {
-  assert.match(releaseNotes("0.3.0", LOG)!, /^- three\n- more\n\n\*\*Install/);
-  assert.match(releaseNotes("0.2.0", LOG)!, /^- two\n\n\*\*Install/);
-  assert.match(releaseNotes("0.1.0", LOG)!, /^- one\n\n\*\*Install/);
-  assert.doesNotMatch(releaseNotes("0.2.0", LOG)!, /three|- one/);
+  assert.match(releaseNotes("0.3.0", LOG, PROJ, FPR)!, /^- three\n- more\n\n\*\*Install/);
+  assert.match(releaseNotes("0.2.0", LOG, PROJ, FPR)!, /^- two\n\n\*\*Install/);
+  assert.match(releaseNotes("0.1.0", LOG, PROJ, FPR)!, /^- one\n\n\*\*Install/);
+  assert.doesNotMatch(releaseNotes("0.2.0", LOG, PROJ, FPR)!, /three|- one/);
 });
 
 test("releaseNotes is null when the changelog has no section for the version", () => {
-  assert.equal(releaseNotes("0.4.0", LOG), null);
-  assert.equal(releaseNotes("0.2", LOG), null);
-});
-
-test("releaseNotes prints the exact notes for a sample", () => {
-  const fence = "```";
-  assert.equal(
-    releaseNotes("0.2.0", LOG),
-    [
-      "- two",
-      "",
-      "**Install (Fedora 43/44):**",
-      "",
-      `${fence}bash`,
-      "sudo dnf copr enable chipp/nopipeline",
-      "sudo dnf install nopipeline",
-      fence,
-      "",
-      "The tag is signed with the release key in `.release-signers`; check it with:",
-      "",
-      `${fence}bash`,
-      "git -c gpg.ssh.allowedSignersFile=.release-signers verify-tag v0.2.0",
-      fence,
-      "",
-    ].join("\n"),
-  );
+  assert.equal(releaseNotes("0.4.0", LOG, PROJ, FPR), null);
+  assert.equal(releaseNotes("0.2", LOG, PROJ, FPR), null);
 });
 
 test("--notes prints the notes for package.json's version without git; a missing section is a problem", async (t) => {
@@ -321,8 +224,11 @@ test("--notes prints the notes for package.json's version without git; a missing
   const script = join(process.cwd(), "scripts", "release.ts");
   await writeFile(join(root, "package.json"), JSON.stringify({ version: "0.2.0" }));
   await writeFile(join(root, "CHANGELOG.md"), LOG);
+  await mkdir(join(root, "packaging", "obs"), { recursive: true });
+  await writeFile(join(root, "packaging", "obs-signing-key.fingerprint"), `${FPR}\n`);
+  await writeFile(join(root, "packaging", "obs", "project"), `${PROJ}\n`);
   const out = execFileSync("node", [script, "--notes"], { cwd: root, encoding: "utf8" });
-  assert.equal(out, releaseNotes("0.2.0", LOG));
+  assert.equal(out, releaseNotes("0.2.0", LOG, PROJ, FPR));
   await writeFile(join(root, "package.json"), JSON.stringify({ version: "0.9.0" }));
   let status = 0;
   let stdout = "";
@@ -337,4 +243,71 @@ test("--notes prints the notes for package.json's version without git; a missing
   assert.equal(status, 1);
   assert.equal(stdout, "");
   assert.match(stderr, /^problem: CHANGELOG\.md has no section for 0\.9\.0/);
+});
+
+const DAY = 86400;
+const NOW = Date.UTC(2026, 10, 11) / 1000;
+
+test("keyExpiryLine warns inside 180 days and names the UTC date", () => {
+  const soon = keyExpiryLine(NOW + 179 * DAY, NOW);
+  assert.equal(soon.level, "warning");
+  assert.match(soon.text, /2027-05-09/);
+  assert.equal(keyExpiryLine(NOW + 181 * DAY, NOW).level, "info");
+  assert.match(keyExpiryLine(NOW + 181 * DAY, NOW).text, /2027-05-11/);
+  assert.equal(keyExpiryLine(NOW + 180 * DAY, NOW).level, "info");
+});
+
+test("keyExpiryLine: no expiry is info, an already expired key is a warning", () => {
+  const none = keyExpiryLine(0, NOW);
+  assert.equal(none.level, "info");
+  assert.match(none.text, /does not expire/);
+  assert.equal(keyExpiryLine(NOW - DAY, NOW).level, "warning");
+});
+
+test("obsRepoUrl turns every colon of the project into :/", () => {
+  assert.equal(obsRepoUrl("home:a:nopipeline", "Debian_13"), "https://download.opensuse.org/repositories/home:/a:/nopipeline/Debian_13/");
+});
+
+test("releaseNotes install blocks come from the OBS project", () => {
+  const notes = releaseNotes("0.2.0", LOG, "home:a:nopipeline", FPR)!;
+  const base = "https://download.opensuse.org/repositories/home:/a:/nopipeline";
+  assert.ok(notes.includes(`sudo dnf config-manager addrepo --from-repofile=${base}/Fedora_$(rpm -E %fedora)/home:a:nopipeline.repo`));
+  assert.ok(notes.includes("sudo dnf install nopipeline"));
+  assert.ok(notes.includes("Types: deb\n"));
+  assert.ok(notes.includes(`URIs: ${base}/Debian_13/`));
+  assert.ok(notes.includes("Signed-By: /usr/share/keyrings/nopipeline-archive-keyring.gpg"));
+  assert.ok(notes.includes(`${base}/Debian_13/Release.key`));
+  assert.ok(notes.includes("xUbuntu_24.04"));
+  assert.ok(notes.includes("[home_a_nopipeline]"));
+  assert.ok(notes.includes(`Server = ${base}/Arch/$arch`));
+  assert.ok(notes.includes(`sudo pacman-key --lsign-key ${FPR}`));
+  assert.ok(notes.includes("https://github.com/nodesource/distributions"));
+  assert.ok(notes.includes("verify-tag v0.2.0"));
+  assert.doesNotMatch(notes, /copr/i);
+});
+
+test("--notes with the placeholder OBS project is a problem on stderr and exit 1", async (t) => {
+  const root = await tempDir(t);
+  const script = join(process.cwd(), "scripts", "release.ts");
+  await mkdir(join(root, "packaging", "obs"), { recursive: true });
+  await writeFile(join(root, "package.json"), JSON.stringify({ version: "0.2.0" }));
+  await writeFile(join(root, "CHANGELOG.md"), LOG);
+  await writeFile(join(root, "packaging", "obs-signing-key.fingerprint"), `${FPR}\n`);
+  await writeFile(join(root, "packaging", "obs", "project"), "home:CHANGE-ME:nopipeline\n");
+  const r = spawnSync("node", [script, "--notes"], { cwd: root, encoding: "utf8" });
+  assert.equal(r.status, 1);
+  assert.equal(r.stdout, "");
+  assert.match(r.stderr, /^problem: packaging\/obs\/project/);
+});
+
+test("the OBS _service downloads exactly the files build-source.sh renders, from the latest release of @REPO@", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const xml = await readFile("packaging/obs/_service", "utf8");
+  const paths = [...xml.matchAll(/<param name="path">([^<]*)<\/param>/g)].map((m) => m[1]);
+  const names = ["nopipeline.tar.gz", "nopipeline.spec", "nopipeline.dsc", "debian.control", "debian.rules", "debian.changelog", "PKGBUILD", "nopipeline.install"];
+  assert.deepEqual(paths, names.map((n) => `@REPO@/releases/latest/download/${n}`));
+  assert.equal([...xml.matchAll(/<param name="host">github\.com<\/param>/g)].length, names.length);
+  const meta = await readFile("packaging/obs/project-meta.xml.in", "utf8");
+  assert.deepEqual([...meta.matchAll(/<repository name="([^"]*)"/g)].map((m) => m[1]), ["Fedora_43", "Fedora_44", "Debian_13", "xUbuntu_24.04", "xUbuntu_26.04", "Arch"]);
+  assert.match(meta, /<project name="@PROJECT@">/);
 });

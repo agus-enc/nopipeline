@@ -1,37 +1,71 @@
 // Checks that the repo is ready to release, then prints the commands to run.
-// It only prints: it never tags, pushes or builds. With --notes it prints the GitHub release notes instead.
+// It only prints: it never tags, pushes or builds (it does download the OBS repo key to read its expiry). With --notes it prints the GitHub release notes instead.
 import { execFile } from "node:child_process";
-import { readFile, stat } from "node:fs/promises";
-import { homedir } from "node:os";
-import { join, relative, isAbsolute } from "node:path";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { promisify } from "node:util";
 
 type Git = (args: string[]) => Promise<string>;
 
 const SCRIPT = "packaging/copr-bootstrap.sh";
-const WEBHOOK_PREFIX = "https://copr.fedorainfracloud.org/webhooks/custom/";
+const OBS_HOST = "https://download.opensuse.org/repositories";
+const DAY = 86400;
+const WARN_DAYS = 180;
 
-/** The webhook file (a secret URL): where it is, and the home folder used to print its path with `~`. */
-export type Webhook = { path: string; home: string };
+/** Distros whose own Node is older than 22.22 (or lacks TypeScript support) need Node from NodeSource. One place to change. */
+const NODE_NOTE =
+  "nopipeline needs Node.js 22.22 or newer. Debian 13 and Ubuntu 24.04 ship an older one; install Node.js 22 from [NodeSource](https://github.com/nodesource/distributions) first.";
 
-/** `$XDG_CONFIG_HOME/nopipeline/copr-webhook`, default `~/.config/nopipeline/copr-webhook`. */
-export function webhookLocation(env: Record<string, string | undefined>, home: string): Webhook {
-  const base = env.XDG_CONFIG_HOME !== undefined && env.XDG_CONFIG_HOME !== "" ? env.XDG_CONFIG_HOME : join(home, ".config");
-  return { path: join(base, "nopipeline", "copr-webhook"), home };
+/** The directory of one OBS repository on download.opensuse.org. */
+export function obsRepoUrl(project: string, repo: string): string {
+  return `${OBS_HOST}/${project.replaceAll(":", ":/")}/${repo}/`;
 }
 
-/** Single-quotes `text` when it has anything outside a safe set. */
-const quote = (text: string): string => (/^[A-Za-z0-9._/@+-]+$/.test(text) ? text : `'${text.replaceAll("'", "'\\''")}'`);
-
-/** The path as typed in a shell: `~/...` under home (the rest quoted if needed), else absolute (quoted if needed). */
-export function shellPath({ path, home }: Webhook): string {
-  const rel = relative(home, path);
-  if (rel !== "" && rel !== ".." && !rel.startsWith("../") && !isAbsolute(rel)) return `~/${quote(rel)}`;
-  return quote(path);
+/** What to tell about the repo key's expiry (Unix seconds, 0 for none): a warning when it lapses within 180 days or already has. */
+export function keyExpiryLine(expires: number, now: number): { level: "info" | "warning"; text: string } {
+  if (expires === 0) return { level: "info", text: "the OBS repo key does not expire" };
+  const date = new Date(expires * 1000).toISOString().slice(0, 10);
+  const left = expires - now;
+  if (left <= 0) return { level: "warning", text: `the OBS repo key expired on ${date}: renew it in OBS` };
+  if (left < WARN_DAYS * DAY) return { level: "warning", text: `the OBS repo key expires on ${date} (in ${Math.ceil(left / DAY)} days): extend it in OBS` };
+  return { level: "info", text: `the OBS repo key expires on ${date}` };
 }
 
-/** The GitHub release notes for `version`: its CHANGELOG section, then the install and tag-check blocks. Null when there is no such section. */
-export function releaseNotes(version: string, changelog: string): string | null {
+const PROJECT_FILE = "packaging/obs/project";
+const FINGERPRINT_FILE = "packaging/obs-signing-key.fingerprint";
+
+/** Reads the OBS project name and key fingerprint; a problem line for each that is missing, still a placeholder or malformed. */
+async function readObs(root: string, problems: string[]): Promise<{ project: string | null; fingerprint: string | null }> {
+  const read = async (file: string): Promise<string | null> => {
+    try {
+      return (await readFile(join(root, file), "utf8")).trim();
+    } catch {
+      problems.push(`${file} is missing`);
+      return null;
+    }
+  };
+  let project = await read(PROJECT_FILE);
+  if (project !== null && project.includes("CHANGE-ME")) {
+    problems.push(`${PROJECT_FILE} still holds the placeholder (put the OBS project name there)`);
+    project = null;
+  } else if (project !== null && !/^[A-Za-z0-9:._-]+$/.test(project)) {
+    problems.push(`${PROJECT_FILE} must hold one OBS project name like home:user:nopipeline`);
+    project = null;
+  }
+  let fingerprint = await read(FINGERPRINT_FILE);
+  if (fingerprint !== null && /^0{40}$/.test(fingerprint)) {
+    problems.push(`${FINGERPRINT_FILE} still holds the all-zero placeholder (put the OBS key's fingerprint there)`);
+    fingerprint = null;
+  } else if (fingerprint !== null && !/^[0-9A-Fa-f]{40}$/.test(fingerprint)) {
+    problems.push(`${FINGERPRINT_FILE} must hold 40 hex characters`);
+    fingerprint = null;
+  }
+  return { project, fingerprint };
+}
+
+/** The GitHub release notes for `version`: its CHANGELOG section, then the install blocks (from the OBS `project`) and the tag-check block. Null when there is no such section. */
+export function releaseNotes(version: string, changelog: string, project: string, fingerprint: string): string | null {
   const lines = changelog.split("\n");
   const start = lines.findIndex((l) => l.startsWith(`## ${version} — `));
   if (start === -1) return null;
@@ -39,14 +73,47 @@ export function releaseNotes(version: string, changelog: string): string | null 
   const end = rest.findIndex((l) => l.startsWith("## "));
   const section = (end === -1 ? rest : rest.slice(0, end)).join("\n").trim();
   const fence = "```";
+  const repo = (name: string): string => obsRepoUrl(project, name);
+  const keyringPath = "/usr/share/keyrings/nopipeline-archive-keyring.gpg";
   return [
     section,
     "",
-    "**Install (Fedora 43/44):**",
+    "**Install on Fedora (43, 44):**",
     "",
     `${fence}bash`,
-    "sudo dnf copr enable chipp/nopipeline",
+    `sudo dnf config-manager addrepo --from-repofile=${repo("Fedora_$(rpm -E %fedora)")}${project}.repo`,
     "sudo dnf install nopipeline",
+    fence,
+    "",
+    "**Install on Debian and Ubuntu:**",
+    "",
+    NODE_NOTE,
+    "The commands use the `Debian_13` repository; on Ubuntu replace `Debian_13` with `xUbuntu_24.04` or `xUbuntu_26.04`.",
+    "",
+    `${fence}bash`,
+    `curl -fsSL ${repo("Debian_13")}Release.key | sudo gpg --dearmor -o ${keyringPath}`,
+    "sudo tee /etc/apt/sources.list.d/nopipeline.sources <<'EOF'",
+    "Types: deb",
+    `URIs: ${repo("Debian_13")}`,
+    "Suites: ./",
+    `Signed-By: ${keyringPath}`,
+    "EOF",
+    "sudo apt update && sudo apt install nopipeline",
+    fence,
+    "",
+    "**Install on Arch:**",
+    "",
+    "Add this to `/etc/pacman.conf`, then import the repo key and trust it:",
+    "",
+    `${fence}ini`,
+    `[${project.replaceAll(":", "_")}]`,
+    `Server = ${repo("Arch")}$arch`,
+    fence,
+    "",
+    `${fence}bash`,
+    `curl -fsSL "https://build.opensuse.org/projects/${project}/signing_keys/download?kind=gpg" | sudo pacman-key --add -`,
+    `sudo pacman-key --lsign-key ${fingerprint}`,
+    "sudo pacman -Syu nopipeline",
     fence,
     "",
     "The tag is signed with the release key in `.release-signers`; check it with:",
@@ -61,8 +128,7 @@ export function releaseNotes(version: string, changelog: string): string | null 
 export async function checkRelease(
   git: Git,
   root: string,
-  webhook: Webhook,
-): Promise<{ problems: string[]; version: string; commands: string[]; warnings: string[] }> {
+): Promise<{ problems: string[]; version: string; commands: string[]; warnings: string[]; project: string | null; fingerprint: string | null }> {
   const problems: string[] = [];
   const warnings: string[] = [];
   const pkg = JSON.parse(await readFile(join(root, "package.json"), "utf8")) as { version: string };
@@ -108,27 +174,7 @@ export async function checkRelease(
     problems.push(".release-signers must hold exactly one line: releases ssh-ed25519 <public key>");
   }
 
-  // Checks the file only; its content is never put in a message (it is a secret).
-  let mode: number | null = null;
-  try {
-    mode = (await stat(webhook.path)).mode;
-  } catch {
-    problems.push(`${webhook.path}: put the project's custom webhook URL there (Copr → Settings → Integrations), mode 600`);
-  }
-  if (mode !== null) {
-    if ((mode & 0o077) !== 0) problems.push(`${webhook.path} is readable by others; chmod 600 it`);
-    let raw = "";
-    try {
-      raw = await readFile(webhook.path, "utf8");
-    } catch {
-      // an unreadable file cannot hold a valid URL; reported below
-    }
-    const text = raw.trim();
-    const line = raw.endsWith("\n") ? raw.slice(0, -1) : raw;
-    if (raw.includes("\r")) problems.push(`${webhook.path} has Windows line endings (CRLF); save it with LF`);
-    else if (text !== "" && line !== text) problems.push(`${webhook.path} has spaces or blank lines around the URL; it must hold only the URL (curl rejects the extra characters)`);
-    else if (!text.startsWith(WEBHOOK_PREFIX) || /\s/.test(text)) problems.push(`${webhook.path} doesn't look like a Copr custom webhook URL`);
-  }
+  const { project, fingerprint } = await readObs(root, problems);
 
   const tags = ((await safe(["tag", "--list", "v[0-9]*.[0-9]*.[0-9]*", "--sort=-v:refname"])) ?? "")
     .split("\n")
@@ -145,7 +191,7 @@ export async function checkRelease(
     }
   }
 
-  return { problems, version, commands: [`git tag -s ${tag} -m "nopipeline ${version}"`, `git push origin ${tag}`, `curl -fsS -X POST "$(cat ${shellPath(webhook)})"`, `node scripts/release.ts --notes | gh release create ${tag} --verify-tag --title "nopipeline ${version}" --notes-file -`], warnings };
+  return { problems, version, commands: [`git tag -s ${tag} -m "nopipeline ${version}"`, `git push origin ${tag}`], warnings, project, fingerprint };
 }
 
 /** Fetches origin's branches and tags; returns a problem line when that fails. */
@@ -158,15 +204,42 @@ export async function fetchOrigin(git: Git): Promise<string | null> {
   }
 }
 
+/** The OBS project and key fingerprint for the notes, or null after printing a problem line. */
+async function obsForNotes(): Promise<{ project: string; fingerprint: string } | null> {
+  const problems: string[] = [];
+  const { project, fingerprint } = await readObs(".", problems);
+  if (project === null || fingerprint === null) {
+    for (const p of problems) console.error(`problem: ${p}`);
+    return null;
+  }
+  return { project, fingerprint };
+}
+
 async function printNotes(): Promise<void> {
   const { version } = JSON.parse(await readFile("package.json", "utf8")) as { version: string };
-  const notes = releaseNotes(version, await readFile("CHANGELOG.md", "utf8"));
+  const obs = await obsForNotes();
+  if (obs === null) {
+    process.exitCode = 1;
+    return;
+  }
+  const notes = releaseNotes(version, await readFile("CHANGELOG.md", "utf8"), obs.project, obs.fingerprint);
   if (notes === null) {
     console.error(`problem: CHANGELOG.md has no section for ${version} (a heading like '## ${version} — 2026-11-07')`);
     process.exitCode = 1;
     return;
   }
   process.stdout.write(notes);
+}
+
+/** The key's expiry in Unix seconds, from packaging/obs-key.sh (it downloads the key and checks the pinned fingerprint). */
+async function fetchKeyExpiry(root: string, project: string, fingerprint: string): Promise<number> {
+  const dir = await mkdtemp(join(tmpdir(), "nopipeline-key-"));
+  try {
+    await promisify(execFile)("sh", [join(root, "packaging", "obs-key.sh"), "--project", project, fingerprint, dir], { cwd: root });
+    return Number((await readFile(join(dir, "expires"), "utf8")).trim());
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 }
 
 async function main(): Promise<void> {
@@ -179,8 +252,18 @@ async function main(): Promise<void> {
     process.exitCode = 1;
     return;
   }
-  const { problems, version, commands, warnings } = await checkRelease(git, process.cwd(), webhookLocation(process.env, homedir()));
+  const { problems, version, commands, warnings, project, fingerprint } = await checkRelease(git, process.cwd());
   for (const w of warnings) console.log(`warning: ${w}`);
+  // With a placeholder project or fingerprint there is nothing to fetch (already a problem above).
+  if (project !== null && fingerprint !== null) {
+    try {
+      const line = keyExpiryLine(await fetchKeyExpiry(process.cwd(), project, fingerprint), Date.now() / 1000);
+      console.log(`${line.level}: ${line.text}`);
+    } catch (error) {
+      const detail = (error as { stderr?: string }).stderr?.trim().split("\n")[0] ?? (error instanceof Error ? error.message.split("\n")[0] : String(error));
+      console.log(`warning: could not check the OBS repo key (${detail})`);
+    }
+  }
   if (problems.length > 0) {
     for (const p of problems) console.log(`problem: ${p}`);
     process.exitCode = 1;
@@ -188,6 +271,7 @@ async function main(): Promise<void> {
   }
   console.log(`Ready to release ${version}. Run these, in order:`);
   for (const c of commands) console.log(`  ${c}`);
+  console.log("GitHub Actions then builds and publishes the release and starts the OBS build.");
 }
 
 if (import.meta.main) await main();
