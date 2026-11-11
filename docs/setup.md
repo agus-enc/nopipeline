@@ -16,20 +16,35 @@ In each one choose `•••` → Connections and add your connection. A databa
 
 ## 3. Install
 
+On Fedora, from Copr:
+
+```bash
+sudo dnf copr enable chipp/nopipeline
+sudo dnf install nopipeline
+```
+
+This puts a `nopipeline` command on your path. Updates come with `sudo dnf upgrade` (see [Updating](../README.md#updating)).
+
+### Other Linux: from source
+
 The project's `.npmrc` blocks install scripts and pins exact versions:
 
 ```bash
+git clone https://github.com/agus-enc/nopipeline.git
+cd nopipeline
 npm ci
 npm audit signatures
 ```
 
+From a clone, run the commands below as `node src/cli.ts …` from that folder, or `npm run setup` and `npm run sync -- …`. The next section's `nopipeline` works only from the package or after `npm link`.
+
 ## 4. Run the setup
 
 ```bash
-npm run setup
+nopipeline setup
 ```
 
-`node src/cli.ts setup --config <file>` writes the profile somewhere else. The profile is described in [Configuration](configuration.md).
+`nopipeline setup --config <file>` writes the profile somewhere else. The profile is described in [Configuration](configuration.md).
 
 ### What it asks
 
@@ -87,13 +102,13 @@ With the setting on, Obsidian writes `[[links]]` and the sync converts them on e
 
 See [Usage](usage.md). The first real run on a profile only previews until you add `--yes`.
 
-## Optional: `npm link`
+## From a clone: `npm link`
 
-`npm link` in this folder puts a `nopipeline` command on your path, so `nopipeline setup` and `nopipeline sync --dry-run` work from anywhere.
+The package already provides the `nopipeline` command. From a clone, `npm link` in the clone's folder puts a `nopipeline` command on your path, so `nopipeline setup` and `nopipeline sync --dry-run` work from anywhere.
 
 For a menu entry instead, see [Desktop launcher](desktop.md#desktop-launcher).
 
-Everything also works as `node src/cli.ts …` or `npm run sync -- …` from this folder.
+Everything also works as `node src/cli.ts …` or `npm run sync -- …` from the clone.
 
 ## Try it safely first
 
@@ -104,7 +119,7 @@ Before pointing it at your real vault and database, try a trial profile on copie
 3. Make a second profile, say `~/.config/nopipeline/trial.json`, by running:
 
    ```bash
-   npm run setup -- --config ~/.config/nopipeline/trial.json
+   nopipeline setup --config ~/.config/nopipeline/trial.json
    ```
 
 4. If the copy's folder has another name than the vault (`My Vault copy`), add `"vaultName": "My Vault"` to the trial profile. Then `obsidian://open?vault=My%20Vault…` links still count as links into the vault.

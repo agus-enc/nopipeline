@@ -22,14 +22,17 @@ nopipeline launcher uninstall
 
 ### Which Node it uses
 
-The entry runs the absolute path of the Node that ran the install on this folder's `src/cli.ts`, with the absolute `--config`. So it doesn't depend on `PATH`, `npm link` or the working folder.
+The entry runs the absolute path of the Node that ran the install on the `src/cli.ts` it was run from, with the absolute `--config`. So it doesn't depend on `PATH`, `npm link` or the working folder.
+
+- From the Fedora package, that is `/usr/share/nopipeline/src/cli.ts`. An upgrade replaces the files at the same path, so you don't reinstall the entry after an update.
+- From a clone, it is the clone's `src/cli.ts`.
 
 The Node path is:
 
 - the `node` on `PATH`, when that is the same file as the running Node and lives in `/usr/bin` or `/usr/local/bin` (so a distro's `node` link survives an upgrade);
 - otherwise the running Node's own path.
 
-If you move this folder, or a Node upgrade changes its path, run `launcher install` again.
+If you move the clone, or a Node upgrade changes its path, run `launcher install` again.
 
 ### Actions
 

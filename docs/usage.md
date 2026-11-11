@@ -4,7 +4,7 @@ The commands, their options, exit codes, notes on how a run behaves, and where t
 
 ## Commands and options
 
-Everything below also works as `node src/cli.ts …` or `npm run sync -- …` from this folder, or as `nopipeline …` after `npm link` (see [Setup](setup.md#optional-npm-link)).
+Everything below also works as `node src/cli.ts …` or `npm run sync -- …` from this folder, or as `nopipeline …` after `npm link` (see [Setup](setup.md#from-a-clone-npm-link)).
 
 ### `sync`
 
