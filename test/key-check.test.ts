@@ -136,16 +136,61 @@ test("expiryOfKeyring reads the primary key's expiry and does not import the key
   assert.deepEqual(await readFile(join(dir, "k.gpg")), before);
 });
 
-test("main downloads the asset with gh, fails with exit 1 and no issue when gh cannot", async (t) => {
+/** A fake gh on PATH: logs its arguments; `release view` answers with VIEW_OUT on stdout / VIEW_ERR on stderr and exit VIEW_EXIT; everything else exits 1. */
+async function fakeGh(t: import("node:test").TestContext, view: { out?: string; err?: string; exit: number }) {
   const dir = await tempDir(t);
   const log = join(dir, "gh.log");
-  await writeFile(join(dir, "gh"), `#!/bin/sh\necho "$*" >> '${log}'\nexit 1\n`);
+  await writeFile(
+    join(dir, "gh"),
+    `#!/bin/sh\necho "$*" >> '${log}'\nif [ "$1 $2" = "release view" ]; then\n  [ -z "$VIEW_OUT" ] || printf '%s\\n' "$VIEW_OUT"\n  [ -z "$VIEW_ERR" ] || printf '%s\\n' "$VIEW_ERR" >&2\n  exit "$VIEW_EXIT"\nfi\nexit 1\n`,
+  );
   await chmod(join(dir, "gh"), 0o755);
-  const r = spawnSync(process.execPath, [script], { encoding: "utf8", env: { ...process.env, PATH: `${dir}:${process.env.PATH}` } });
+  const r = () =>
+    spawnSync(process.execPath, [script], {
+      encoding: "utf8",
+      env: { ...process.env, PATH: `${dir}:${process.env.PATH}`, VIEW_OUT: view.out ?? "", VIEW_ERR: view.err ?? "", VIEW_EXIT: String(view.exit) },
+    });
+  const calls = async () => readFile(log, "utf8").catch(() => "");
+  return { r, calls };
+}
+
+test("main looks up the release's assets, then downloads the keyring; exit 1 and no issue when that fails", async (t) => {
+  const gh = await fakeGh(t, { out: '{"assets":[{"name":"SHA256SUMS"},{"name":"nopipeline-archive-keyring.gpg"}]}', exit: 0 });
+  const r = gh.r();
   assert.equal(r.status, 1);
-  const calls = await readFile(log, "utf8");
+  const calls = await gh.calls();
+  assert.match(calls, /release view --json assets/);
   assert.match(calls, /release download --pattern nopipeline-archive-keyring\.gpg --dir /);
   assert.doesNotMatch(calls, /issue create/);
+});
+
+test("main: no release at all is a notice and exit 0, no download and no issue", async (t) => {
+  const gh = await fakeGh(t, { err: "release not found", exit: 1 });
+  const r = gh.r();
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /^::notice::/m);
+  assert.doesNotMatch(await gh.calls(), /download|issue/);
+});
+
+test("main: a latest release without the keyring asset is a notice and exit 0", async (t) => {
+  const gh = await fakeGh(t, { out: '{"assets":[{"name":"SHA256SUMS"}]}', exit: 0 });
+  const r = gh.r();
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /^::notice::/m);
+  assert.doesNotMatch(await gh.calls(), /download|issue/);
+});
+
+test("main: any other gh failure while looking up the release still exits 1", async (t) => {
+  const gh = await fakeGh(t, { err: "error connecting to api.github.com", exit: 1 });
+  const r = gh.r();
+  assert.equal(r.status, 1);
+  assert.doesNotMatch(await gh.calls(), /issue/);
+});
+
+test("check with nothing shipped yet opens no issue and does not ask OBS", async () => {
+  const d = deps({ shippedExpires: async () => null, served: async () => Promise.reject(new Error("must not be called")) });
+  await check(d);
+  assert.deepEqual(d.created, []);
 });
 
 // --- the workflow ---

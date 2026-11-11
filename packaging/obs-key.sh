@@ -6,11 +6,13 @@
 #
 # Writes <out-dir>/keys/{nopipeline-archive-keyring.gpg,nopipeline.gpg,nopipeline-trusted} and <out-dir>/expires
 # (the primary key's expiry in Unix seconds, 0 for none). Nothing is written unless every check passes.
-# Exit status: 0 ok; 2 the download has no key with the pinned fingerprint (scripts/key-check.ts tells this apart); 1 any other failure.
+# Exit status: 0 ok; 10 the download has no key with the pinned fingerprint (scripts/key-check.ts tells this apart); 1 any other failure.
+# 10 is used because sh and awk exit 2 on their own errors, so 2 could not tell a changed key from a script bug.
 # gpg runs in a private temporary home: the caller's keyring is never read or changed.
 set -eu
 
 reported=
+mismatched=
 fail() {
   reported=1
   printf 'obs-key: %s\n' "$*" >&2
@@ -24,14 +26,19 @@ cleanup() {
   if [ "$status" -ne 0 ] && [ -z "$reported" ]; then
     printf 'obs-key: failed unexpectedly (exit %s)\n' "$status" >&2
   fi
+  # Only mismatch() may exit 10; whatever else went wrong (a tool's own exit 2, say) is a plain failure.
+  if [ "$status" -ne 0 ] && [ -z "$mismatched" ]; then
+    exit 1
+  fi
 }
 trap cleanup EXIT
 
-# Like fail, but exit 2: the served key is not the pinned one.
+# Like fail, but exit 10: the served key is not the pinned one.
 mismatch() {
   reported=1
+  mismatched=1
   printf 'obs-key: %s\n' "$*" >&2
-  exit 2
+  exit 10
 }
 
 # The one place that knows where OBS serves a project's signing key.
@@ -64,7 +71,7 @@ export GNUPGHOME="$work/gnupg"
 mkdir -m 700 "$GNUPGHOME"
 gpgb() { gpg --batch --no-tty "$@"; }
 
-curl -fsSL --proto '=https,file' --max-time 60 -o "$work/download" -- "$url" 2>/dev/null || fail "cannot download the key from $url"
+curl -fsSL --proto '=https,file' --proto-redir '=https' --max-time 60 -o "$work/download" -- "$url" 2>/dev/null || fail "cannot download the key from $url"
 gpgb --import "$work/download" >/dev/null 2>&1 || fail "the download from $url has no key"
 
 # In --with-colons output the first fpr line after a pub line is that key's primary fingerprint.

@@ -1,5 +1,5 @@
 // Opens a GitHub issue when the OBS repo key shipped in the latest release expires within 90 days (or OBS serves another key).
-// Run monthly by .github/workflows/key-check.yml. Needs gh (with GH_TOKEN), gpg and curl. A fetch failure exits 1 and opens no issue.
+// Run monthly by .github/workflows/key-check.yml. Needs gh (with GH_TOKEN), gpg and curl. A fetch failure exits 1 and opens no issue; no release yet (or none with the keyring asset) is a notice and exit 0.
 import { execFile } from "node:child_process";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -58,7 +58,8 @@ export async function expiryOfKeyring(file: string): Promise<number> {
 }
 
 export type Deps = {
-  shippedExpires: () => Promise<number>;
+  /** The expiry of the key in the latest release, or null when there is no release or it has no keyring asset yet. */
+  shippedExpires: () => Promise<number | null>;
   served: () => Promise<{ matchesPin: boolean; expires: number }>;
   openTitles: () => Promise<string[]>;
   createIssue: (issue: Issue) => Promise<void>;
@@ -69,6 +70,11 @@ export type Deps = {
 /** Decides and, if needed, opens the issue. Rejects on any fetch failure, before anything is created. */
 export async function check(deps: Deps): Promise<void> {
   const shippedExpires = await deps.shippedExpires();
+  if (shippedExpires === null) {
+    // Before the first OBS release there is nothing shipped to check; that is not a failure (a red run would mail the owner every month).
+    console.log(`::notice::No release with ${ASSET} yet, so there is no shipped key to check.`);
+    return;
+  }
   const served = await deps.served();
   const issue = decide({ shippedExpires, servedExpires: served.expires, servedMatchesPin: served.matchesPin, now: deps.now(), docsUrl: deps.docsUrl });
   if (issue === null) return;
@@ -90,6 +96,16 @@ function realDeps(root: string): Deps {
   return {
     shippedExpires: () =>
       withTempDir(async (dir) => {
+        // Only "no release" and "no keyring asset" mean nothing is shipped yet; any other gh failure is a failed fetch.
+        let assets: { name: string }[];
+        try {
+          const { stdout } = await run("gh", ["release", "view", "--json", "assets"]);
+          assets = (JSON.parse(stdout) as { assets: { name: string }[] }).assets;
+        } catch (error) {
+          if (/release not found/i.test((error as { stderr?: string }).stderr ?? "")) return null;
+          throw error;
+        }
+        if (!assets.some((a) => a.name === ASSET)) return null;
         await run("gh", ["release", "download", "--pattern", ASSET, "--dir", dir]);
         return expiryOfKeyring(join(dir, ASSET));
       }),
@@ -100,8 +116,8 @@ function realDeps(root: string): Deps {
         try {
           await run("sh", [join(root, "packaging", "obs-key.sh"), "--project", project, fingerprint, dir]);
         } catch (error) {
-          // obs-key.sh exits 2 when the served key is not the pinned one; any other failure is a failed fetch.
-          if ((error as { code?: unknown }).code === 2) return { matchesPin: false, expires: 0 };
+          // obs-key.sh exits 10 when the served key is not the pinned one; any other failure is a failed fetch.
+          if ((error as { code?: unknown }).code === 10) return { matchesPin: false, expires: 0 };
           throw error;
         }
         return { matchesPin: true, expires: Number((await readFile(join(dir, "expires"), "utf8")).trim()) };

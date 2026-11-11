@@ -74,6 +74,24 @@ test("a README that still has the home:<user> placeholder is a problem", async (
   assert.match(again.problems[0]!, /README\.md/);
 });
 
+for (const [form, text] of [
+  ["home:<user> (project name)", "home:<user>:nopipeline\n"],
+  ["home:/<user>:/ (URL form)", "Server = https://download.opensuse.org/repositories/home:/<user>:/nopipeline/Arch/$arch\n"],
+  ["home_<user>_ (pacman section)", "[home_<user>_nopipeline_Arch]\n"],
+] as const) {
+  test(`a README with only the ${form} placeholder is a problem`, async (t) => {
+    const { root } = await run(t);
+    await writeFile(join(root, "README.md"), text);
+    const again = await checkRelease(async (args) => {
+      const v = ({ ...happy })[`git ${args.join(" ")}`];
+      if (v === undefined || v instanceof Error) throw new Error("unexpected");
+      return v;
+    }, root);
+    assert.equal(again.problems.length, 1);
+    assert.match(again.problems[0]!, /README\.md/);
+  });
+}
+
 test("the all-zero key fingerprint is a problem", async (t) => {
   const { result } = await run(t, {}, { fingerprint: "0".repeat(40) + "\n" });
   assert.equal(result.problems.length, 1);

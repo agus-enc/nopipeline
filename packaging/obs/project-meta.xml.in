@@ -27,7 +27,8 @@
     <arch>aarch64</arch>
   </repository>
   <repository name="Arch">
-    <path project="Arch:Community" repository="standard"/>
+    <path project="Arch:Core" repository="standard"/>
+    <path project="Arch:Extra" repository="standard"/>
     <arch>x86_64</arch>
   </repository>
 </project>

@@ -40,9 +40,9 @@ function armored(home: string, ...fprs: string[]): string {
   return text(gpg(home, ["--armor", "--export", ...fprs]).stdout);
 }
 
-async function run(t: import("node:test").TestContext, args: (out: string) => string[] | Promise<string[]>, opts: { shell?: string } = {}) {
+async function run(t: import("node:test").TestContext, args: (out: string) => string[] | Promise<string[]>, opts: { shell?: string; path?: string } = {}) {
   const out = join(await tempDir(t), "out");
-  const r = spawnSync(opts.shell ?? "/bin/sh", [script, ...(await args(out))], { encoding: "utf8", env: { ...process.env, GNUPGHOME: await gnupgHome(t) } });
+  const r = spawnSync(opts.shell ?? "/bin/sh", [script, ...(await args(out))], { encoding: "utf8", env: { ...process.env, GNUPGHOME: await gnupgHome(t), ...(opts.path === undefined ? {} : { PATH: `${opts.path}:${process.env.PATH}` }) } });
   const listing = await readdir(out).catch(() => null);
   return { r, out, listing };
 }
@@ -116,7 +116,7 @@ test("a different key fails", { skip }, async (t) => {
   const fpr = makeKey(home, "pinned", "2031-05-01");
   const other = makeKey(home, "other", "2031-05-01");
   const { r, out, listing } = await run(t, async (o) => [await keyFile(t, armored(home, other)), fpr, o]);
-  assert.equal(r.status, 2);
+  assert.equal(r.status, 10);
   assert.match(r.stderr, /^obs-key: /);
   assert.equal(listing, null, out);
 });
@@ -129,7 +129,7 @@ test("a key that only has the pinned fingerprint as a subkey fails", { skip }, a
   const listing = text(gpg(home, ["--with-colons", "--fingerprint", "--list-keys", main]).stdout);
   const sub = [...listing.matchAll(/^fpr:::::::::([0-9A-F]{40}):/gm)].map((m) => m[1]!)[1]!;
   const { r, listing: written } = await run(t, async (o) => [await keyFile(t, armored(home, main)), sub, o]);
-  assert.equal(r.status, 2);
+  assert.equal(r.status, 10);
   assert.match(r.stderr, /^obs-key: /);
   assert.equal(written, null);
 });
@@ -196,4 +196,15 @@ test("the script runs under dash", { skip: skip || (dash ? false : "dash is not 
   const { r, out } = await run(t, async (o) => [await keyFile(t, armored(home, fpr)), fpr, o], { shell: "dash" });
   assert.equal(r.status, 0, r.stderr);
   assert.equal(await readFile(join(out, "keys", "nopipeline-trusted"), "utf8"), `${fpr}:4:\n`);
+});
+
+test("a tool failing with status 2 (as awk or dash do on errors) is exit 1, never the key-changed status 10", { skip }, async (t) => {
+  const home = await gnupgHome(t);
+  const fpr = makeKey(home, "pinned", "2031-05-01");
+  const bin = await tempDir(t);
+  await writeFile(join(bin, "awk"), "#!/bin/sh\nexit 2\n", { mode: 0o755 });
+  const { r, listing } = await run(t, async (o) => [await keyFile(t, armored(home, fpr)), fpr, o], { path: bin });
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /failed unexpectedly \(exit 2\)/);
+  assert.equal(listing, null);
 });

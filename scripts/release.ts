@@ -177,7 +177,8 @@ export async function checkRelease(
   const { project, fingerprint } = await readObs(root, problems);
   // The README's install commands name the OBS project; they must not go out with the placeholder.
   const readme = await readFile(join(root, "README.md"), "utf8").catch(() => "");
-  if (readme.includes("home:<user>")) problems.push("README.md still has the placeholder home:<user> in its install commands (put the OBS project there)");
+  // The placeholder appears as home:<user>, home:/<user>:/ (URLs) and home_<user>_ (pacman section): any <user> is one.
+  if (readme.includes("<user>")) problems.push("README.md still has the placeholder <user> in its install commands (put the OBS project there)");
 
   const tags = ((await safe(["tag", "--list", "v[0-9]*.[0-9]*.[0-9]*", "--sort=-v:refname"])) ?? "")
     .split("\n")
