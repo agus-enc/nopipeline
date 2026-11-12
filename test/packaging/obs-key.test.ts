@@ -185,6 +185,110 @@ test("--project builds the OBS download URL and checks the project name", { skip
   assert.match(missing.r.stderr, /^obs-key: /);
 });
 
+/** A fake curl on PATH that records its arguments (one per line) in args.log, then runs `body`. */
+async function fakeCurl(t: import("node:test").TestContext, body: string): Promise<{ bin: string; log: string }> {
+  const bin = await tempDir(t);
+  const log = join(bin, "args.log");
+  await writeFile(join(bin, "curl"), `#!/bin/sh\nfor a in "$@"; do printf '%s\\n' "$a" >> '${log}'; done\n${body}\n`, { mode: 0o755 });
+  return { bin, log };
+}
+
+test("--project builds exactly the OBS download URL, and curl is limited to 1 MiB", { skip }, async (t) => {
+  const { bin, log } = await fakeCurl(t, "exit 22");
+  const { r } = await run(t, (o) => ["--project", "home:someone:nopipeline", "A".repeat(40), o], { path: bin });
+  assert.equal(r.status, 1);
+  const args = (await readFile(log, "utf8")).split("\n");
+  assert.ok(args.includes("https://build.opensuse.org/projects/home:someone:nopipeline/signing_keys/download?kind=gpg"), args.join(" "));
+  const i = args.indexOf("--max-filesize");
+  assert.notEqual(i, -1);
+  assert.equal(args[i + 1], "1048576");
+});
+
+test("a lowercase fingerprint is accepted and written in upper case", { skip }, async (t) => {
+  const home = await gnupgHome(t);
+  const fpr = makeKey(home, "pinned", "2031-05-01");
+  const { r, out } = await run(t, async (o) => [await keyFile(t, armored(home, fpr)), fpr.toLowerCase(), o]);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(await readFile(join(out, "keys", "nopipeline-trusted"), "utf8"), `${fpr}:4:\n`);
+});
+
+test("a fingerprint with an embedded newline is refused", { skip }, async (t) => {
+  const home = await gnupgHome(t);
+  const fpr = makeKey(home, "pinned", "2031-05-01");
+  const { r, listing } = await run(t, async (o) => [await keyFile(t, armored(home, fpr)), `${fpr}\n${fpr}`, o]);
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /^obs-key: /);
+  assert.equal(listing, null);
+});
+
+test("a revoked key is refused and nothing is written", { skip }, async (t) => {
+  const home = await gnupgHome(t);
+  const fpr = makeKey(home, "pinned", "2031-05-01");
+  // gpg stores a revocation certificate (its armor lines start with ':') next to the key when it makes one.
+  const cert = await readFile(join(home, "openpgp-revocs.d", `${fpr}.rev`), "utf8");
+  const imported = gpg(home, ["--import"], Buffer.from(cert.replace(/^:/gm, "")));
+  assert.equal(imported.status, 0, text(imported.stderr));
+  assert.match(text(gpg(home, ["--with-colons", "--list-keys", fpr]).stdout), /^pub:r:/m);
+  const { r, listing } = await run(t, async (o) => [await keyFile(t, armored(home, fpr)), fpr, o]);
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /^obs-key: .*revoked/);
+  assert.equal(listing, null);
+});
+
+test("an expired key is refused and nothing is written", { skip }, async (t) => {
+  const home = await gnupgHome(t);
+  const made = gpg(home, ["--passphrase", "", "--pinentry-mode", "loopback", "--faked-system-time", "20200101T000000", "--quick-generate-key", "old <old@example.invalid>", "ed25519", "sign", "1y"]);
+  assert.equal(made.status, 0, text(made.stderr));
+  const fpr = /^fpr:::::::::([0-9A-F]{40}):/m.exec(text(gpg(home, ["--with-colons", "--fingerprint", "--list-keys", "old"]).stdout))![1]!;
+  const { r, listing } = await run(t, async (o) => [await keyFile(t, armored(home, fpr)), fpr, o]);
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /^obs-key: .*expired/);
+  assert.equal(listing, null);
+});
+
+test("an empty out-dir argument is refused", { skip }, async (t) => {
+  const home = await gnupgHome(t);
+  const fpr = makeKey(home, "pinned", "2031-05-01");
+  const cwd = await tempDir(t);
+  const r = spawnSync("/bin/sh", [script, await keyFile(t, armored(home, fpr)), fpr, ""], { encoding: "utf8", cwd });
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /^obs-key: /);
+  assert.deepEqual(await readdir(cwd), [], "nothing was written in the current folder");
+});
+
+test("an existing keys folder is emptied first, so a stale file is never shipped", { skip }, async (t) => {
+  const home = await gnupgHome(t);
+  const fpr = makeKey(home, "pinned", "2031-05-01");
+  const out = join(await tempDir(t), "out");
+  await mkdir(join(out, "keys"), { recursive: true });
+  await writeFile(join(out, "keys", "stale.gpg"), "old");
+  const r = spawnSync("/bin/sh", [script, await keyFile(t, armored(home, fpr)), fpr, out], { encoding: "utf8", env: { ...process.env, GNUPGHOME: await gnupgHome(t) } });
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual((await readdir(join(out, "keys"))).sort(), files);
+});
+
+test("a stale keys folder is left alone when a check fails", { skip }, async (t) => {
+  const out = join(await tempDir(t), "out");
+  await mkdir(join(out, "keys"), { recursive: true });
+  await writeFile(join(out, "keys", "stale.gpg"), "old");
+  const r = spawnSync("/bin/sh", [script, await keyFile(t, "not a key\n"), "B".repeat(40), out], { encoding: "utf8" });
+  assert.equal(r.status, 1);
+  assert.deepEqual(await readdir(join(out, "keys")), ["stale.gpg"]);
+});
+
+test("a TERM signal removes the temporary folder", { skip }, async (t) => {
+  const bin = await tempDir(t);
+  const rec = join(bin, "download.path");
+  // The fake curl records where the script downloads to (inside its temporary folder), then waits.
+  await writeFile(join(bin, "curl"), `#!/bin/sh\nwhile [ "$1" != -o ]; do shift; done\nprintf '%s\\n' "$2" > '${rec}'\nsleep 2\n`, { mode: 0o755 });
+  const out = join(await tempDir(t), "out");
+  const r = spawnSync("/bin/sh", [script, "https://example.invalid/k", "A".repeat(40), out], { encoding: "utf8", timeout: 700, killSignal: "SIGTERM", env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } });
+  const download = (await readFile(rec, "utf8")).trim();
+  assert.match(download, /\/download$/);
+  assert.equal(await stat(join(download, "..")).then(() => true, () => false), false, "the temporary folder is gone");
+  assert.notEqual(r.status, 0);
+});
+
 test("the committed fingerprint file is 40 hex characters", async () => {
   assert.match(await readFile(fingerprintFile, "utf8"), /^[0-9A-Fa-f]{40}\n$/);
 });
