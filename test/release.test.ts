@@ -3,7 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 import { test } from "node:test";
-import { checkRelease, fetchOrigin, keyExpiryLine, obsRepoUrl, releaseNotes } from "../scripts/release.ts";
+import { checkRelease, fetchOrigin, keyExpiryLine, obsRepoUrl, parseKeyExpiry, releaseNotes } from "../scripts/release.ts";
 import { tempDir } from "./helpers/tmp.ts";
 
 const SIGNERS = "releases ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample\n";
@@ -255,6 +255,14 @@ test("keyExpiryLine warns inside 180 days and names the UTC date", () => {
   assert.equal(keyExpiryLine(NOW + 181 * DAY, NOW).level, "info");
   assert.match(keyExpiryLine(NOW + 181 * DAY, NOW).text, /2027-05-11/);
   assert.equal(keyExpiryLine(NOW + 180 * DAY, NOW).level, "info");
+});
+
+test("parseKeyExpiry reads digits and gives a clear error for anything else", () => {
+  assert.equal(parseKeyExpiry("1893456000\n"), 1893456000);
+  assert.equal(parseKeyExpiry("0\n"), 0);
+  for (const bad of ["", "\n", "soon", "12x", "-5", "1.5"]) {
+    assert.throws(() => parseKeyExpiry(bad), /could not read the OBS key expiry/, JSON.stringify(bad));
+  }
 });
 
 test("keyExpiryLine: no expiry is info, an already expired key is a warning", () => {

@@ -229,12 +229,19 @@ async function printNotes(): Promise<void> {
   process.stdout.write(notes);
 }
 
+/** The expiry from the `expires` file obs-key.sh writes: digits (Unix seconds, 0 for none). */
+export function parseKeyExpiry(text: string): number {
+  const value = text.trim();
+  if (!/^\d+$/.test(value)) throw new Error("could not read the OBS key expiry (the expires file is not a number)");
+  return Number(value);
+}
+
 /** The key's expiry in Unix seconds, from packaging/obs-key.sh (it downloads the key and checks the pinned fingerprint). */
 async function fetchKeyExpiry(root: string, project: string, fingerprint: string): Promise<number> {
   const dir = await mkdtemp(join(tmpdir(), "nopipeline-key-"));
   try {
     await promisify(execFile)("sh", [join(root, "packaging", "obs-key.sh"), "--project", project, fingerprint, dir], { cwd: root });
-    return Number((await readFile(join(dir, "expires"), "utf8")).trim());
+    return parseKeyExpiry(await readFile(join(dir, "expires"), "utf8"));
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
