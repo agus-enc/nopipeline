@@ -1,7 +1,9 @@
 #!/bin/sh
 # Installed as /usr/bin/nopipeline by the rpm, deb and Arch recipes. Node runs the cli straight from its .ts source, which
 # needs a Node built with TypeScript support; the Debian and Ubuntu archive Node is not. Say so instead of failing with
-# ERR_UNKNOWN_FILE_EXTENSION. The two variables are overridden only by the tests.
+# ERR_UNKNOWN_FILE_EXTENSION.
+# NOPIPELINE_TEST_NODE and NOPIPELINE_TEST_CLI exist only for the test suite; they are not a supported interface and may
+# change or go away without notice.
 node=${NOPIPELINE_TEST_NODE:-/usr/bin/node}
 cli=${NOPIPELINE_TEST_CLI:-/usr/share/nopipeline/src/cli.ts}
 

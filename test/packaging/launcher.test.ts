@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmod, writeFile } from "node:fs/promises";
+import { chmod, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
@@ -76,4 +76,9 @@ test("the three recipes install the one launcher as /usr/bin/nopipeline", async 
   assert.match(await read("fedora/nopipeline.spec.in"), /^install -m 0755 packaging\/nopipeline-launcher\.sh %\{buildroot\}\/usr\/bin\/nopipeline$/m);
   assert.match(await read("debian/debian.rules"), /^\tinstall -m 0755 packaging\/nopipeline-launcher\.sh debian\/nopipeline\/usr\/bin\/nopipeline$/m);
   assert.match(await read("arch/PKGBUILD.in"), /^ {2}install -m 0755 packaging\/nopipeline-launcher\.sh "\$pkgdir\/usr\/bin\/nopipeline"$/m);
+});
+
+test("the launcher says its test variables are not a supported interface", async () => {
+  const text = await readFile(fileURLToPath(new URL("../../packaging/nopipeline-launcher.sh", import.meta.url)), "utf8");
+  assert.match(text, /NOPIPELINE_TEST_NODE and NOPIPELINE_TEST_CLI exist only for the test suite; they are not a supported interface/);
 });
