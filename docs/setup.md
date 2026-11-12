@@ -16,7 +16,7 @@ In each one choose `•••` → Connections and add your connection. A databa
 
 ## 3. Install
 
-Install the package for your distribution from the OBS repository: Fedora, Debian/Ubuntu (which needs Node.js from NodeSource first) and Arch are covered, with the exact commands, in the [README](../README.md#install-and-set-up). Existing Copr users switch there too.
+Install the package for your distribution from the OBS repository: Fedora, Debian/Ubuntu (which needs Node.js from NodeSource first) and Arch are covered, with the exact commands, in the [README](../README.md#install-and-set-up). If you installed from Copr before, the README has the short switch-over steps.
 
 This puts a `nopipeline` command on your path. Updates come with the system's normal upgrade (see [Updating](../README.md#updating)).
 

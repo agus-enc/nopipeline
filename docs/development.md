@@ -27,7 +27,7 @@ or add a repo-local alias once (`git config --local alias.c '!TZ=UTC git commit'
 
 ## Releases
 
-A release is a signed git tag `vX.Y.Z`. **Pushing the tag is the whole release**: the release workflow checks it, publishes the GitHub release and starts the package builds on OBS (and, during the transition, on Copr). Packages are built only from a tag signed by the release key.
+A release is a signed git tag `vX.Y.Z`. **Pushing the tag is the whole release**: the release workflow checks it, publishes the GitHub release and starts the package builds on OBS. Packages are built only from a tag signed by the release key.
 
 ### The release key
 
@@ -46,7 +46,7 @@ git config --local user.signingkey ~/.ssh/nopipeline_release_ed25519
 
 Or pass it for one tag: `git -c gpg.format=ssh -c user.signingkey="$HOME"/.ssh/nopipeline_release_ed25519 tag -s …`.
 
-The same line is pasted into the Copr package's script and into the `release` environment's variable `RELEASE_SIGNERS` (see [Packaging](#packaging)). The builds trust those copies, never the one in the tag's tree.
+The same line is stored in the `release` environment's variable `RELEASE_SIGNERS` (see [Packaging](#packaging)). The builds trust that copy, never the one in the tag's tree.
 
 ### The changelog rule
 
@@ -68,8 +68,6 @@ The newest heading must equal `version` in `package.json`; a test checks it.
 4. Run the printed commands, in order: `git tag -s vX.Y.Z -m "nopipeline X.Y.Z"` and `git push origin vX.Y.Z`. That is all: the pushed tag starts the release workflow (below). Watch it on the repository's Actions page.
 5. The release notes come from `node scripts/release.ts --notes` (the workflow runs it): the version's `CHANGELOG.md` section, then the install commands per distro family built from the OBS project in `packaging/obs/project`, and the tag-verification command. `--notes` makes no git calls; it prints a `problem:` line to stderr and exits 1 if the section is missing or the OBS project or fingerprint is still a placeholder.
 
-It also warns when `packaging/copr-bootstrap.sh` changed since the previous tag. If so, update the script stored in Copr before the build (see below). A change to `build-source.sh` needs no Copr update, as long as it keeps its contract with the bootstrap: the arguments `[<git-url> [<result-dir> [<tag>]]]` and an `ALLOWED_SIGNERS=` assignment at the start of a line (the happy-path test in `test/packaging/copr-bootstrap.test.ts` enforces it).
-
 A fix that only touches packaging is a new patch version, so the version always equals the tag. Only plain `vX.Y.Z` tags release (the workflow's tag filter ignores `v1.2.3-rc1` and `v1.2`); there are no pre-release tags.
 
 ### What the release workflow does
@@ -77,20 +75,19 @@ A fix that only touches packaging is a new patch version, so the version always 
 `.github/workflows/release.yml` runs on a pushed tag `vX.Y.Z`. It has two jobs.
 
 1. `build` has no secrets and a read-only token. It runs `npm ci`, `npm audit signatures` and `npm run check` on the tag.
-2. `publish` runs in the `release` environment (which holds `RELEASE_SIGNERS`, `OBS_TOKEN` and `COPR_WEBHOOK`) and only if `build` passed. It:
+2. `publish` runs in the `release` environment (which holds `RELEASE_SIGNERS` and `OBS_TOKEN`) and only if `build` passed. It:
    - checks that `.release-signers` in the tag equals the variable `RELEASE_SIGNERS`;
    - fetches the OBS repo key and checks its fingerprint against the pin (see [OBS repo key](#obs-repo-key)); a key that expires within 60 days only prints a notice;
    - runs `packaging/build-source.sh` for the tag, with the trusted key from `RELEASE_SIGNERS`. This verifies the tag (annotated, SSH signature by that key, signed name equals the tag, `package.json` version equals the tag) and builds the source tarball and the rpm, deb and Arch recipes, with the repo key inside;
    - builds and installs the Debian package and the Arch package in containers (`packaging/debian/check-deb.sh --from …`, `packaging/arch/check-arch.sh --from …`), on exactly the files that will be published;
    - creates the GitHub release (`packaging/publish-release.sh`): title `nopipeline X.Y.Z`, notes from `node scripts/release.ts --notes`, and the files plus `SHA256SUMS`;
-   - triggers the OBS source-service run with `OBS_TOKEN`; OBS then downloads the files from `releases/latest/download/` and rebuilds every target;
-   - triggers the Copr build with `COPR_WEBHOOK`, if that secret is set.
+   - triggers the OBS source-service run with `OBS_TOKEN`; OBS then downloads the files from `releases/latest/download/` and rebuilds every target.
 
-A failure stops everything after it. The OBS and Copr triggers come last, so nothing is built from a tag that failed a check.
+A failure stops everything after it. The OBS trigger comes last, so nothing is built from a tag that failed a check.
 
 ### Re-running a failed run
 
-Re-run it from the Actions page ("Re-run failed jobs"). Every step is safe to repeat: if the release page already exists and is published, `publish-release.sh` prints a notice and leaves it and its files alone (it never uploads over published files and never creates a second release); a leftover unpublished draft from an interrupted run (`gh release view` finds drafts too, and drafts are not served by `releases/latest/download/`) is deleted with `gh release delete --yes`, which keeps the tag, and the release is created again, and re-triggering OBS or Copr just rebuilds. Releases are created the way GitHub recommends for immutable releases: `gh release create` with files makes a draft, uploads every file, then publishes ([gh source](https://github.com/cli/cli/blob/trunk/pkg/cmd/release/create/create.go)). The workflow runs one release at a time (`concurrency: release`, never cancelling a running one), so two tags pushed close together cannot mix their files. GitHub keeps only one pending run per concurrency group, so pushing a third tag while one release runs cancels the older pending one ([docs](https://docs.github.com/en/actions/writing-workflows/choosing-what-your-workflow-does/control-the-concurrency-of-workflows-and-jobs)); release that version again with a new patch tag.
+Re-run it from the Actions page ("Re-run failed jobs"). Every step is safe to repeat: if the release page already exists and is published, `publish-release.sh` prints a notice and leaves it and its files alone (it never uploads over published files and never creates a second release); a leftover unpublished draft from an interrupted run (`gh release view` finds drafts too, and drafts are not served by `releases/latest/download/`) is deleted with `gh release delete --yes`, which keeps the tag, and the release is created again, and re-triggering OBS just rebuilds. Releases are created the way GitHub recommends for immutable releases: `gh release create` with files makes a draft, uploads every file, then publishes ([gh source](https://github.com/cli/cli/blob/trunk/pkg/cmd/release/create/create.go)). The workflow runs one release at a time (`concurrency: release`, never cancelling a running one), so two tags pushed close together cannot mix their files. GitHub keeps only one pending run per concurrency group, so pushing a third tag while one release runs cancels the older pending one ([docs](https://docs.github.com/en/actions/writing-workflows/choosing-what-your-workflow-does/control-the-concurrency-of-workflows-and-jobs)); release that version again with a new patch tag.
 
 The Debian package has no `Debtransform-Release`, so an OBS rebuild of the same version republishes `X.Y.Z-1` with a different hash; apt can report a hash mismatch for a short while after a re-run. `apt update` again fixes it. `debian.rules` also refuses to build when `version.json` and `debian/changelog` name different versions. A re-run does **not** refresh existing release notes. To change them, edit the section in `CHANGELOG.md` for the next release, or fix this release's page by hand:
 
@@ -165,7 +162,6 @@ Done once by the owner, who types every credential. Nothing here is done by scri
    ```bash
    gh variable set RELEASE_SIGNERS --env release < .release-signers
    gh secret set OBS_TOKEN --env release
-   gh secret set COPR_WEBHOOK --env release      # the Custom webhook URL from Copr (see below)
    ```
 
 7. **Tag ruleset.** Settings, Rules, Rulesets, New ruleset, New tag ruleset. Target pattern `v*`; enable Restrict creations, Restrict updates and Restrict deletions; add the "Repository admin" role to the bypass list so you can still push release tags. Rulesets are available for public repositories on the GitHub Free plan ([About rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets)). If this ever turns out unavailable, the environment's tag rule and `RELEASE_SIGNERS` are the protection that remains.
@@ -214,19 +210,9 @@ It opens nothing if an open issue with the same title exists. If there is no rel
 
 **If the monthly check stopped.** GitHub disables scheduled workflows in a public repository after 60 days without repository activity ([docs](https://docs.github.com/en/actions/writing-workflows/choosing-when-your-workflow-runs/events-that-trigger-workflows#schedule)). Re-enable it on the Actions page (key-check, "Enable workflow"), or with `gh workflow enable key-check.yml`. A release or any commit counts as activity.
 
-### What `copr-bootstrap.sh` does
-
-Copr limits a custom script to 4 kB (its form validation answers "Maximum script size is 4kB"; see [`forms.py` in fedora-copr/copr](https://github.com/fedora-copr/copr/blob/main/frontend/coprs_frontend/coprs/forms.py)) and `build-source.sh` is bigger, so the script stored in Copr is the short `packaging/copr-bootstrap.sh` (POSIX `sh`, filled copy under 4 kB; a test checks this). It:
-
-- ignores every `GIT_*` variable and the machine's git configuration;
-- clones the repository, picks the newest `vX.Y.Z` tag, and checks the tag exactly as `build-source.sh` does (annotated, SSH signature valid for the key in its own `ALLOWED_SIGNERS` line, signed name equals the tag);
-- only then takes `packaging/build-source.sh` from that verified tag, fills in the same key, and runs it on the bootstrap's own verified clone (not a fresh download), which verifies the tag again and builds. Nothing from an unsigned tag is ever run.
-
-Both scripts repeat the verification lines (the bootstrap must be self-contained); a test checks they carry the same `verify-tag` flags and tag pattern. It takes optional arguments (`[<git-url> [<tag>]]`) for tests; on Copr it runs with none.
-
 ### What `build-source.sh` does
 
-`packaging/build-source.sh` is a POSIX `sh` script that `copr-bootstrap.sh` runs, from the signed tag, to make the source of an rpm. It:
+`packaging/build-source.sh` is a POSIX `sh` script that the release workflow runs on the signed tag (with the trusted key filled in by `sed`) to make the sources of all three packages. It:
 
 - ignores every `GIT_*` variable and the machine's git configuration;
 - clones the repository and picks the newest `vX.Y.Z` tag;
@@ -238,9 +224,9 @@ Both scripts repeat the verification lines (the bootstrap must be self-contained
 - when the tag has `packaging/debian/`, also writes the Debian recipe for OBS: `nopipeline.dsc` (from `nopipeline.dsc.in`, with `Version: X.Y.Z-1` and the tarball's sha256, md5 and size, computed with `node`), `debian.control`, `debian.rules` and `debian.changelog` (from `debian.changelog.in`, dated with `date -R`). OBS's [debtransform](https://github.com/openSUSE/obs-build/blob/master/debtransform) puts each `debian.<name>` file at `debian/<name>` on top of the tarball named by `Debtransform-Tar:`. Old tags without that folder build as before.
 - when the tag has `packaging/arch/`, also writes the Arch recipe for OBS: `PKGBUILD` (from `PKGBUILD.in`, with the version and the tarball's sha256) and `nopipeline.install`, which runs `pacman-key --populate nopipeline` on install and upgrade (guarded: if pacman's keyring is not initialised it prints a hint instead of failing). The package ships `keys/nopipeline.gpg` and `keys/nopipeline-trusted` in `/usr/share/pacman/keyrings/`; if `--populate` fails the scriptlet prints a hint and the install goes on; removing the package does not untrust the key (it stays locally signed with owner trust 4; drop it with `pacman-key --delete <fingerprint>`, the fingerprint is in `packaging/obs-signing-key.fingerprint`); [pacman-key(8)](https://man.archlinux.org/man/pacman-key.8) says `--populate` reads `<name>.gpg` and the optional `<name>-trusted` (gpg ownertrust format) and `<name>-revoked` there.
 
-It (and the bootstrap) call these tools: `git`, `ssh-keygen` (through git's SSH signature check), `node`, `npm`, `tar`, `sed`, `grep`, `head`, `tr`, `date`, `env`, `mktemp`, `realpath`, and `sh`, `rm`, `mkdir`, `cp` and `mv`. It trusts the `PATH` it runs with, which is fine on Copr, whose build chroot controls `PATH`; do not run it with a `PATH` you do not control.
+It calls these tools: `git`, `ssh-keygen` (through git's SSH signature check), `node`, `npm`, `tar`, `sed`, `grep`, `head`, `tr`, `date`, `env`, `mktemp`, `realpath`, and `sh`, `rm`, `mkdir`, `cp` and `mv`. It trusts the `PATH` it runs with, which is fine on a GitHub Actions runner; do not run it with a `PATH` you do not control.
 
-It takes optional arguments (`[<git-url> [<result-dir> [<tag>]]]`). On Copr it runs with none, so the defaults apply: `https://github.com/agus-enc/nopipeline.git`, the current folder, and the newest tag.
+It takes optional arguments (`[<git-url> [<result-dir> [<tag>]]]`). The workflow passes the tag's repository and a result folder; with no arguments the defaults apply: `https://github.com/agus-enc/nopipeline.git`, the current folder, and the newest tag.
 
 All three recipes install the one `packaging/nopipeline-launcher.sh` as `/usr/bin/nopipeline`. It runs `/usr/bin/node` on `src/cli.ts`, but first checks `process.features.typescript`; on a Node without it (the Debian and Ubuntu archive one) it prints that Node.js 22.22 or newer from NodeSource is needed and exits 1. The check scripts compare the installed file with it byte for byte (the rpm differs only in the first line: rpm rewrites `#!/bin/sh` to `#!/usr/bin/sh`).
 
@@ -251,55 +237,6 @@ All three recipes install the one `packaging/nopipeline-launcher.sh` as `/usr/bi
 ### Checking the Arch recipe
 
 `packaging/arch/check-arch.sh` (manual, run from the repository root after committing; needs Docker, gpg, curl and the network) builds the OBS source from `HEAD` with a throwaway repo key, then in an `archlinux` container runs `pacman -Syu`, builds the package with `makepkg` as a normal user, installs it with `pacman -U`, runs `nopipeline --version`, and checks the throwaway key is in pacman's keyring, locally signed. Arch's own `nodejs` supports TypeScript, so it is the Node under test.
-
-### The Copr project
-
-Copr keeps building during the transition: the release workflow calls its webhook after the OBS trigger. Users should have only one of the two repositories enabled (`sudo dnf copr disable chipp/nopipeline` when they move to OBS). Retiring Copr is a later, separate step: remove `copr-bootstrap.sh`, the `COPR_WEBHOOK` secret and this section, tell Copr users how to switch, and archive the Copr project, after an OBS release has been installed and checked.
-
-The project is `chipp/nopipeline`, with the chroots fedora-43 and fedora-44, each for x86_64 and aarch64. It has one package, `nopipeline`, with these settings (see [Copr's custom source method](https://docs.copr.fedorainfracloud.org/custom_source_method.html)):
-
-| Field | Value |
-| --- | --- |
-| Source type | Custom |
-| Script | `packaging/copr-bootstrap.sh`, with `@RELEASE_SIGNERS@` replaced by the one line of `.release-signers` |
-| Build dependencies | `git-core nodejs-npm openssh-clients tar` |
-| Result directory | `.` |
-
-### The build webhook
-
-Builds are started with the package's custom webhook, not `copr-cli`, because the webhook URL does not expire (Copr API tokens do, every 180 days). Store the URL once: in Copr open the project, then Settings, then Integrations, and copy the "Custom webhook" URL for the package `nopipeline`. Then:
-
-```bash
-mkdir -p ~/.config/nopipeline
-install -m 600 /dev/null ~/.config/nopipeline/copr-webhook
-```
-
-and paste the URL into that file with an editor, alone on its line (no spaces before or after; `node scripts/release.ts` checks it) (use `$XDG_CONFIG_HOME` instead of `~/.config` if you set it). The URL is a secret: anyone who has it can start builds, though only of signed tags. Never commit it or paste it into a chat or log. If Copr regenerates the URL on the Integrations page, update the file. See [Copr's custom webhook docs](https://docs.copr.fedorainfracloud.org/custom_source_method.html).
-
-### The Copr API token
-
-The API token (`~/.config/copr`, from <https://copr.fedorainfracloud.org/api/>) is needed only to change the stored script (`copr-cli edit-package-custom`) or to add the package the first time. It expires every 180 days; renew it on that page.
-
-### Updating the stored script
-
-The script stored in Copr is a full copy of `copr-bootstrap.sh` with the key filled in; it trusts only the key in that copy, never anything from the repository. Only a change to that file or to the release key needs an update in Copr; `build-source.sh` changes ship with the next signed tag, provided the contract above holds. Make the copy and check the placeholder is gone:
-
-```bash
-copy="$(mktemp)"
-sed "s|@RELEASE_SIGNERS@|$(cat .release-signers)|" packaging/copr-bootstrap.sh > "$copy"
-grep -c '@RELEASE_SIGNERS@' "$copy"    # prints 0
-wc -c < "$copy"    # must be under 4096
-grep -c "^ALLOWED_SIGNERS='releases ssh-ed25519 " "$copy"    # prints 1 (an empty .release-signers must not pass)
-```
-
-To update the stored script, upload the new copy (flags as in the Copr docs; see `copr-cli edit-package-custom --help`):
-
-```bash
-copr-cli edit-package-custom chipp/nopipeline --name nopipeline \
-  --script "$copy" \
-  --script-builddeps "git-core nodejs-npm openssh-clients tar" \
-  --script-resultdir .
-```
 
 ### Checking the package locally
 

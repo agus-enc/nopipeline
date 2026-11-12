@@ -1,6 +1,6 @@
 #!/bin/sh
 # Builds the rpm source for nopipeline from the newest signed release tag.
-# Run by Fedora Copr's "Custom" source method (no arguments, cwd = the result folder).
+# Run by the release workflow (.github/workflows/release.yml), which fills in the key below with sed.
 #
 # Usage: build-source.sh [<git-url> [<result-dir> [<tag>]]]
 #
@@ -12,8 +12,8 @@
 # If the tag has packaging/arch/, the Arch recipe for OBS is also written: PKGBUILD (with the tarball's sha256) and
 # nopipeline.install.
 #
-# Only a tag signed by the release key can produce a build. The key is the line below, filled in when this script is
-# pasted into Copr. It is never read from the repository, so a tampered repository cannot change which key is trusted.
+# Only a tag signed by the release key can produce a build. The key is the line below, filled in by the release
+# workflow from its RELEASE_SIGNERS variable. It is never read from the repository, so a tampered repository cannot change which key is trusted.
 set -eu
 
 ALLOWED_SIGNERS='@RELEASE_SIGNERS@'

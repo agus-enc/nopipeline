@@ -91,7 +91,7 @@ test("secrets sit only in a step's own env: the real file, and broken copies are
 test("the real file never puts a secret on a curl command line", () => {
   for (const l of lines.filter((x) => /\bcurl\b/.test(x))) {
     // The secret may go to printf (a shell builtin, so not in the process list) before the pipe, never to curl itself.
-    assert.doesNotMatch(l.slice(l.lastIndexOf("|") + 1), /OBS_TOKEN|COPR_WEBHOOK/, "a secret on a curl command line would show in the process list");
+    assert.doesNotMatch(l.slice(l.lastIndexOf("|") + 1), /OBS_TOKEN/, "a secret on a curl command line would show in the process list");
   }
 });
 
@@ -131,7 +131,6 @@ test("the publish job needs build, can write contents only, and does the release
     "name: Build and install the Arch package",
     "name: Publish the GitHub release",
     "name: Trigger the OBS service run",
-    "name: Trigger the Copr build",
   ].map((s) => {
     const at = publish.indexOf(s);
     assert.notEqual(at, -1, `${s} missing`);
@@ -145,12 +144,6 @@ test("the OBS trigger sends the token through curl's stdin config, not an argume
   assert.match(text, /OBS_TOKEN: \$\{\{ secrets\.OBS_TOKEN \}\}/);
   assert.match(text, /printf 'header = "Authorization: Token %s"\\n' "\$OBS_TOKEN" \| curl [^\n]*--config -/);
   assert.match(text, /openbuildservice\.org\/help\/manuals\/obs-user-guide\/cha-obs-authorization-token/);
-});
-
-test("Copr is skipped with a notice when the webhook secret is empty", () => {
-  assert.match(text, /COPR_WEBHOOK: \$\{\{ secrets\.COPR_WEBHOOK \}\}/);
-  assert.match(text, /\[ -z "\$COPR_WEBHOOK" \]/);
-  assert.match(text, /::notice::[^\n]*Copr/);
 });
 
 test("the signers variable is compared with the tag's .release-signers and fills build-source.sh", () => {

@@ -40,7 +40,7 @@ jobs:
   publish:
     needs: build
     runs-on: ubuntu-latest
-    # The environment holds RELEASE_SIGNERS (variable) and OBS_TOKEN, COPR_WEBHOOK (secrets); it only allows v*.*.* tags.
+    # The environment holds RELEASE_SIGNERS (variable) and OBS_TOKEN (secret); it only allows v*.*.* tags.
     environment: release
     permissions:
       contents: write
@@ -126,15 +126,3 @@ jobs:
           fi
           printf 'header = "Authorization: Token %s"\n' "$OBS_TOKEN" | curl -fsS --config - -X POST https://api.opensuse.org/trigger/runservice >/dev/null
           echo "OBS service run triggered"
-
-      # Transition only. The webhook URL is the secret; it is passed through the environment and read from stdin.
-      - name: Trigger the Copr build
-        env:
-          COPR_WEBHOOK: ${{ secrets.COPR_WEBHOOK }}
-        run: |
-          if [ -z "$COPR_WEBHOOK" ]; then
-            echo "::notice::COPR_WEBHOOK is not set: Copr is not triggered."
-            exit 0
-          fi
-          printf 'url = "%s"\n' "$COPR_WEBHOOK" | curl -fsS --config - -X POST >/dev/null
-          echo "Copr build triggered"

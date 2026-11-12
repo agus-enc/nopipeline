@@ -30,7 +30,7 @@ git -C "$work/repo" -c user.name=Check -c user.email=check@example.com commit --
 git -C "$work/repo" -c user.name=Check -c user.email=check@example.com -c gpg.format=ssh -c "user.signingkey=$work/key" \
   tag -s -m "v$version" "v$version"
 
-step "build-source.sh with the throwaway key (as Copr would run it)"
+step "build-source.sh with the throwaway key (as the release workflow runs it)"
 signer="releases $(cut -d' ' -f1,2 "$work/key.pub")"
 sed "s|@RELEASE_SIGNERS@|$signer|" packaging/build-source.sh >"$work/build-source.sh"
 mkdir "$work/src"

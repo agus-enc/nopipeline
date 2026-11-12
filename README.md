@@ -37,13 +37,12 @@ The tool never creates or changes a database in Notion. It links the ones you al
 
    If `dnf config-manager` is not available, install the plugin first (`sudo dnf install dnf5-plugins` on current Fedora).
 
-   *Already using the Copr repository?* Switch to this one and turn Copr off, so only one of the two is enabled (both ship the same package):
+   *If you installed from Copr before:* the Copr repository is retired and gets no more updates. Turn it off, add the OBS repository as above, and upgrade:
 
    ```bash
    sudo dnf copr disable chipp/nopipeline
+   sudo dnf upgrade
    ```
-
-   Then add the OBS repository as above; `sudo dnf upgrade` takes the OBS build. Copr keeps building for now, so nothing breaks if you wait.
 
    **Debian, Ubuntu and derivatives.** The Node.js that Debian and Ubuntu ship can't run nopipeline: it is built without TypeScript support. First install Node.js 22.22 or newer from [NodeSource](https://github.com/nodesource/distributions) and follow their instructions. The `nopipeline` command tells you if it finds the wrong Node. Then add the repository. Set `dist` in the first command to `Debian_13`; on Ubuntu use `xUbuntu_24.04` or `xUbuntu_26.04`. For Linux Mint, Pop!_OS and other Ubuntu derivatives use the repository of the Ubuntu release they are based on; for other Debian derivatives use `Debian_13`. The package is architecture-independent and only needs `nodejs (>= 22.22)`.
 

@@ -8,7 +8,6 @@ import { promisify } from "node:util";
 
 type Git = (args: string[]) => Promise<string>;
 
-const SCRIPT = "packaging/copr-bootstrap.sh";
 const OBS_HOST = "https://download.opensuse.org/repositories";
 const DAY = 86400;
 const WARN_DAYS = 180;
@@ -139,9 +138,8 @@ export function releaseNotes(version: string, changelog: string, project: string
 export async function checkRelease(
   git: Git,
   root: string,
-): Promise<{ problems: string[]; version: string; commands: string[]; warnings: string[]; project: string | null; fingerprint: string | null }> {
+): Promise<{ problems: string[]; version: string; commands: string[]; project: string | null; fingerprint: string | null }> {
   const problems: string[] = [];
-  const warnings: string[] = [];
   const pkg = JSON.parse(await readFile(join(root, "package.json"), "utf8")) as { version: string };
   const version = pkg.version;
   const tag = `v${version}`;
@@ -178,7 +176,7 @@ export async function checkRelease(
   } catch {
     // reported below
   }
-  // Exactly what packaging/copr-bootstrap.sh accepts: that one line, one trailing newline allowed, nothing else.
+  // Exactly what the release workflow accepts: that one line, one trailing newline allowed, nothing else.
   if (signers === null) problems.push(".release-signers is missing (it holds one line: releases ssh-ed25519 <public key>)");
   else if (signers.includes("\r")) problems.push(".release-signers has Windows line endings (CRLF); save it with LF");
   else if (!/^releases ssh-ed25519 [A-Za-z0-9+/=]+\n?$/.test(signers)) {
@@ -191,22 +189,7 @@ export async function checkRelease(
   // The placeholder appears as home:<user>, home:/<user>:/ (URLs) and home_<user>_ (pacman section): any <user> is one.
   if (readme.includes("<user>")) problems.push("README.md still has the placeholder <user> in its install commands (put the OBS project there)");
 
-  const tags = ((await safe(["tag", "--list", "v[0-9]*.[0-9]*.[0-9]*", "--sort=-v:refname"])) ?? "")
-    .split("\n")
-    .map((l) => l.trim())
-    .filter((l) => /^v\d+\.\d+\.\d+$/.test(l) && l !== tag);
-  const previous = tags[0];
-  if (previous !== undefined) {
-    try {
-      await git(["diff", "--quiet", previous, "HEAD", "--", SCRIPT]);
-    } catch (error) {
-      // git diff --quiet exits 1 when the files differ; any other failure means the comparison itself did not work.
-      if ((error as { code?: unknown }).code === 1) warnings.push(`${SCRIPT} changed since ${previous}: update the Copr package's script before building`);
-      else problems.push(`comparing ${SCRIPT} with ${previous}: the comparison failed (${error instanceof Error ? error.message.split("\n")[0] : String(error)})`);
-    }
-  }
-
-  return { problems, version, commands: [`git tag -s ${tag} -m "nopipeline ${version}"`, `git push origin ${tag}`], warnings, project, fingerprint };
+  return { problems, version, commands: [`git tag -s ${tag} -m "nopipeline ${version}"`, `git push origin ${tag}`], project, fingerprint };
 }
 
 /** Fetches origin's branches and tags; returns a problem line when that fails. */
@@ -267,8 +250,7 @@ async function main(): Promise<void> {
     process.exitCode = 1;
     return;
   }
-  const { problems, version, commands, warnings, project, fingerprint } = await checkRelease(git, process.cwd());
-  for (const w of warnings) console.log(`warning: ${w}`);
+  const { problems, version, commands, project, fingerprint } = await checkRelease(git, process.cwd());
   // With a placeholder project or fingerprint there is nothing to fetch (already a problem above).
   if (project !== null && fingerprint !== null) {
     try {

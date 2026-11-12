@@ -7,8 +7,6 @@ import { checkRelease, fetchOrigin, keyExpiryLine, obsRepoUrl, releaseNotes } fr
 import { tempDir } from "./helpers/tmp.ts";
 
 const SIGNERS = "releases ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample\n";
-const TAGS = "git tag --list v[0-9]*.[0-9]*.[0-9]* --sort=-v:refname";
-const DIFF = "git diff --quiet v0.1.0 HEAD -- packaging/copr-bootstrap.sh";
 
 const happy: Record<string, string | Error> = {
   "git status --porcelain": "",
@@ -17,8 +15,6 @@ const happy: Record<string, string | Error> = {
   "git rev-parse origin/main": "aaa\n",
   "git tag --list v0.2.0": "",
   "git ls-remote --tags origin v0.2.0": "",
-  [TAGS]: "v0.2.0\nv0.1.0\nv0.1.0-rc1\n",
-  [DIFF]: "",
 };
 
 const FPR = "0123456789ABCDEF0123456789ABCDEF01234567";
@@ -47,7 +43,6 @@ async function run(t: import("node:test").TestContext, over: Record<string, stri
 test("the happy path returns exactly the tag and push commands for 0.2.0", async (t) => {
   const { result } = await run(t);
   assert.deepEqual(result.problems, []);
-  assert.deepEqual(result.warnings, []);
   assert.equal(result.version, "0.2.0");
   assert.deepEqual(result.commands, ['git tag -s v0.2.0 -m "nopipeline 0.2.0"', "git push origin v0.2.0"]);
   assert.equal(result.project, "home:someone:nopipeline");
@@ -172,27 +167,7 @@ test("a .release-signers with a comment, blank lines or CRLF is a problem (the b
   assert.deepEqual(result.problems, [], "no trailing newline is fine");
 });
 
-test("a changed copr-bootstrap.sh warns with the previous tag, and is not a problem", async (t) => {
-  const { result } = await run(t, { [DIFF]: exitWith(1) });
-  assert.deepEqual(result.problems, []);
-  assert.deepEqual(result.warnings, ["packaging/copr-bootstrap.sh changed since v0.1.0: update the Copr package's script before building"]);
-});
-
 const exitWith = (code: number) => Object.assign(new Error(`exit ${code}`), { code });
-
-test("a copr-bootstrap.sh comparison that fails for another reason is a problem, not the changed warning", async (t) => {
-  const { result } = await run(t, { [DIFF]: exitWith(128) });
-  assert.deepEqual(result.warnings, []);
-  assert.equal(result.problems.length, 1);
-  assert.match(result.problems[0]!, /comparison failed/);
-  assert.match(result.problems[0]!, /v0\.1\.0/);
-});
-
-test("an exit code 1 from the diff is the changed warning", async (t) => {
-  const { result } = await run(t, { [DIFF]: exitWith(1) });
-  assert.deepEqual(result.problems, []);
-  assert.equal(result.warnings.length, 1);
-});
 
 test("a git failure in any check becomes a problem naming the command", async (t) => {
   for (const [key, name] of [["git status --porcelain", "status"], ["git ls-remote --tags origin v0.2.0", "ls-remote"]] as const) {
@@ -222,12 +197,6 @@ test("fetchOrigin returns null on success and a problem line when the fetch fail
     throw exitWith(128);
   });
   assert.match(problem ?? "", /git fetch origin --tags failed/);
-});
-
-test("no previous tag means no warning and no diff", async (t) => {
-  const { result, calls } = await run(t, { [TAGS]: "v0.2.0\n" });
-  assert.deepEqual(result.warnings, []);
-  assert.ok(!calls.some((c) => c.startsWith("git diff")));
 });
 
 test("the checker only reads: no tag, push or fetch call", async (t) => {

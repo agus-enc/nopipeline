@@ -1,7 +1,7 @@
 #!/bin/sh
 # Publishes the GitHub release for a tag: writes SHA256SUMS over the files in <out-dir>, then creates the release.
 # When it already exists, published (a re-run of a failed workflow), nothing is uploaded or changed (a leftover draft is deleted and made again): published assets are never replaced
-# (with immutable releases on they could not be anyway), and the caller carries on with the OBS and Copr triggers.
+# (with immutable releases on they could not be anyway), and the caller carries on with the OBS trigger.
 # `gh release create` with files creates a draft, uploads every file and then publishes
 # (https://github.com/cli/cli/blob/trunk/pkg/cmd/release/create/create.go), the order GitHub recommends for immutable releases
 # (https://docs.github.com/en/code-security/supply-chain-security/understanding-your-software-supply-chain/immutable-releases).
