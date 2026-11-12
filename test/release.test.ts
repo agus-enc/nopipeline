@@ -308,6 +308,14 @@ test("releaseNotes install blocks come from the OBS project", () => {
   assert.ok(notes.includes(`URIs: ${base}/Debian_13/`));
   assert.ok(notes.includes("Signed-By: /usr/share/keyrings/nopipeline-archive-keyring.gpg"));
   assert.ok(notes.includes(`${base}/Debian_13/Release.key`));
+  assert.ok(notes.includes('key=$(mktemp)'));
+  assert.ok(notes.includes(`curl -fsSL ${base}/Debian_13/Release.key -o "$key" &&`));
+  assert.ok(notes.includes('gpg --show-keys "$key"'));
+  assert.ok(notes.includes('[ -s "$key" ] && sudo gpg --dearmor --yes -o /usr/share/keyrings/nopipeline-archive-keyring.gpg "$key"'));
+  assert.ok(notes.includes('rm -f "$key"'));
+  assert.doesNotMatch(notes, /Release\.key \| sudo gpg/);
+  assert.ok(notes.indexOf("gpg --show-keys") < notes.indexOf("gpg --dearmor"));
+  assert.ok(notes.includes(`fingerprint must be ${FPR}`));
   assert.ok(notes.includes("xUbuntu_24.04"));
   assert.ok(notes.includes("```ini\n[home_a_nopipeline_Arch]\nServer = "));
   assert.ok(notes.includes(`Server = ${base}/Arch/$arch`));

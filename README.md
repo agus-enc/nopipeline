@@ -26,12 +26,12 @@ The tool never creates or changes a database in Notion. It links the ones you al
 2. **Connect it to your databases.** Open the notes database (and the projects database, if you use one). In each, choose `•••` → Connections and add your connection.
 3. **Install.**
 
-   The packages come from a repository on the [openSUSE Build Service](https://openbuildservice.org/) (OBS). Add it once; after that the system's normal upgrade brings new versions. The commands below use the OBS project `home:<user>:nopipeline`; the release notes of each version show the same commands.
+   The packages come from a repository on the [openSUSE Build Service](https://openbuildservice.org/) (OBS). Add it once; after that the system's normal upgrade brings new versions. The commands below use the OBS project `home:chipp:nopipeline`; the release notes of each version show the same commands.
 
    **Fedora (43, 44).** Fedora's own Node.js is enough:
 
    ```bash
-   sudo dnf config-manager addrepo --from-repofile=https://download.opensuse.org/repositories/home:/<user>:/nopipeline/Fedora_$(rpm -E %fedora)/home:<user>:nopipeline.repo
+   sudo dnf config-manager addrepo --from-repofile=https://download.opensuse.org/repositories/home:/chipp:/nopipeline/Fedora_$(rpm -E %fedora)/home:chipp:nopipeline.repo
    sudo dnf install nopipeline
    ```
 
@@ -52,7 +52,7 @@ The tool never creates or changes a database in Notion. It links the ones you al
    ```bash
    dist=Debian_13
    key=$(mktemp)
-   curl -fsSL https://download.opensuse.org/repositories/home:/<user>:/nopipeline/$dist/Release.key -o "$key" &&
+   curl -fsSL https://download.opensuse.org/repositories/home:/chipp:/nopipeline/$dist/Release.key -o "$key" &&
      gpg --show-keys "$key"
    ```
 
@@ -63,7 +63,7 @@ The tool never creates or changes a database in Notion. It links the ones you al
    rm -f "$key"
    sudo tee /etc/apt/sources.list.d/nopipeline.sources <<EOF
    Types: deb
-   URIs: https://download.opensuse.org/repositories/home:/<user>:/nopipeline/$dist/
+   URIs: https://download.opensuse.org/repositories/home:/chipp:/nopipeline/$dist/
    Suites: ./
    Signed-By: /usr/share/keyrings/nopipeline-archive-keyring.gpg
    EOF
@@ -73,17 +73,19 @@ The tool never creates or changes a database in Notion. It links the ones you al
    **Arch and derivatives.** Arch's own `nodejs` works. Add this to `/etc/pacman.conf`:
 
    ```ini
-   [home_<user>_nopipeline_Arch]
-   Server = https://download.opensuse.org/repositories/home:/<user>:/nopipeline/Arch/$arch
+   [home_chipp_nopipeline_Arch]
+   Server = https://download.opensuse.org/repositories/home:/chipp:/nopipeline/Arch/$arch
    ```
 
    then import the repository key, trust it, and install. `<fingerprint>` is the 40 hex characters in [`packaging/obs-signing-key.fingerprint`](packaging/obs-signing-key.fingerprint); after the import, `sudo pacman-key --finger <fingerprint>` must find that key before you sign it:
 
    ```bash
-   curl -fsSL "https://build.opensuse.org/projects/home:<user>:nopipeline/signing_keys/download?kind=gpg" | sudo pacman-key --add -
+   curl -fsSL "https://build.opensuse.org/projects/home:chipp:nopipeline/signing_keys/download?kind=gpg" | sudo pacman-key --add -
    sudo pacman-key --lsign-key <fingerprint>
    sudo pacman -Syu nopipeline
    ```
+
+   `pacman-key --lsign-key` needs pacman's keyring to be initialised (`sudo pacman-key --init` and `sudo pacman-key --populate archlinux`). A normal Arch install has already done that; only fresh containers and chroots lack it.
 
    The package does not add the repository by itself, and it keeps the repository key up to date. Removing the Arch package leaves the key trusted; remove it with `sudo pacman-key --delete <fingerprint>`.
 
@@ -141,7 +143,7 @@ Before you remove the package (`dnf remove`, `apt remove` or `pacman -R`), remov
 Removing the package does not remove the repository you added. Remove it too, or the next update check complains about it:
 
 - **Debian, Ubuntu:** `sudo rm /etc/apt/sources.list.d/nopipeline.sources` (it points at a keyring that goes away with the package, so `apt update` would fail), then `sudo apt update`.
-- **Arch:** delete the `[home_<user>_nopipeline_Arch]` section from `/etc/pacman.conf` (and the key, see above).
+- **Arch:** delete the `[home_chipp_nopipeline_Arch]` section from `/etc/pacman.conf` (and the key, see above).
 - **Fedora:** delete the `.repo` file that `dnf config-manager addrepo` saved in `/etc/yum.repos.d/` (`ls /etc/yum.repos.d | grep nopipeline`). To keep the file and only switch the repository off, use `sudo dnf config-manager setopt <repo id>.enabled=0`.
 
 From a clone, `git pull`, then `npm ci` and `npm audit signatures` again. The launcher and timer point at the clone, so they need no reinstall unless you move the folder.
@@ -155,7 +157,7 @@ The repository is signed with a key that OBS renews about every two years, and e
   ```bash
   dist=Debian_13
   key=$(mktemp)
-  curl -fsSL https://download.opensuse.org/repositories/home:/<user>:/nopipeline/$dist/Release.key -o "$key" &&
+  curl -fsSL https://download.opensuse.org/repositories/home:/chipp:/nopipeline/$dist/Release.key -o "$key" &&
     gpg --show-keys "$key"
   ```
 
@@ -169,9 +171,13 @@ The repository is signed with a key that OBS renews about every two years, and e
   The fingerprint to compare with is in [`packaging/obs-signing-key.fingerprint`](https://github.com/agus-enc/nopipeline/blob/main/packaging/obs-signing-key.fingerprint).
 
 - **Fedora:** `sudo dnf clean all`, then upgrade again; dnf asks to import the repository key. If it still says the key expired, remove the old copy first (`rpm -qa 'gpg-pubkey*'` lists them; `sudo rpm -e <name>` removes one) and upgrade again.
-- **Arch:** `curl -fsSL "https://build.opensuse.org/projects/home:<user>:nopipeline/signing_keys/download?kind=gpg" | sudo pacman-key --add -`
+- **Arch:** `curl -fsSL "https://build.opensuse.org/projects/home:chipp:nopipeline/signing_keys/download?kind=gpg" | sudo pacman-key --add -`
 
 These commands follow how each tool is documented; they have not been tried against a real expired key yet.
+
+## If pacman times out
+
+If `pacman` fails with "Connection timed out after 10000 milliseconds" from `download.opensuse.org` (its redirector is sometimes slow), run it again, or give the download no time limit: `sudo pacman -Syu --disable-download-timeout` (see [pacman(8)](https://man.archlinux.org/man/pacman.8)).
 
 ## Documentation
 
