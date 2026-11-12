@@ -25,7 +25,7 @@ function tree(version: string, lockVersion = version, dependencies: Record<strin
   };
 }
 
-const debianFiles = ["nopipeline.dsc.in", "debian.control", "debian.rules", "debian.changelog.in"];
+const debianFiles = ["nopipeline.dsc.in", "debian.control", "debian.rules", "debian.changelog.in", "debian.copyright"];
 function debianTree(version: string): Record<string, string> {
   const files = tree(version);
   for (const name of debianFiles) {
@@ -88,8 +88,8 @@ test("a tag signed with the release key builds", { skip }, async (t) => {
 test("the Debian recipe is rendered", { skip }, async (t) => {
   const { run, result, listing } = await build(t, [{ name: "v0.2.0", sign: "release" }], { files: debianTree("0.2.0") });
   assert.equal(run.status, 0, run.stderr);
-  assert.deepEqual(listing, ["debian.changelog", "debian.control", "debian.rules", "nopipeline.dsc", "nopipeline.spec", "nopipeline.tar.gz", "version"]);
-  for (const name of ["nopipeline.dsc", "debian.control", "debian.rules", "debian.changelog"]) {
+  assert.deepEqual(listing, ["debian.changelog", "debian.control", "debian.copyright", "debian.rules", "nopipeline.dsc", "nopipeline.spec", "nopipeline.tar.gz", "version"]);
+  for (const name of ["nopipeline.dsc", "debian.control", "debian.copyright", "debian.rules", "debian.changelog"]) {
     assert.doesNotMatch(await readFile(join(result, name), "utf8"), /@[A-Z0-9_]+@/, `no placeholder is left in ${name}`);
   }
   const dsc = await readFile(join(result, "nopipeline.dsc"), "utf8");
@@ -111,6 +111,10 @@ test("the Debian recipe is rendered", { skip }, async (t) => {
   assert.match(control, /^Recommends: libnotify-bin, xdg-utils$/m);
   assert.doesNotMatch(control, /^Build-Depends:.*node/m);
   assert.ok(((await stat(join(result, "debian.rules"))).mode & 0o111) !== 0, "debian.rules is executable");
+  const copyright = await readFile(join(result, "debian.copyright"), "utf8");
+  assert.match(copyright, /^Format: https:\/\/www\.debian\.org\/doc\/packaging-manuals\/copyright-format\/1\.0\/$/m);
+  for (const files of ["*", "node_modules/@notionhq/client/*", "node_modules/node-diff3/*"]) assert.ok(copyright.includes(`\nFiles: ${files}\n`), files);
+  assert.equal(copyright.split("\nLicense: MIT\n").length - 1, 4, "three Files stanzas and the license text");
 });
 
 test("a tag without packaging/debian renders no Debian files", { skip }, async (t) => {

@@ -8,7 +8,7 @@
 # NOPIPELINE_REPO_KEYS=<dir> (optional) names a folder holding exactly the three repo key files; they are put into the
 # tarball under nopipeline-<version>/keys/. Unset or empty: no keys folder.
 # If the tag has packaging/debian/, the Debian recipe for OBS is also written: nopipeline.dsc, debian.control,
-# debian.rules and debian.changelog (the dsc carries the tarball's checksums, so it is rendered after the tarball).
+# debian.copyright, debian.rules and debian.changelog (the dsc carries the tarball's checksums, so it is rendered after the tarball).
 # If the tag has packaging/arch/, the Arch recipe for OBS is also written: PKGBUILD (with the tarball's sha256) and
 # nopipeline.install.
 #
@@ -182,7 +182,7 @@ if [ -d "$tree/packaging/debian" ]; then
     "$deb/nopipeline.dsc.in" >"$out/nopipeline.dsc" || fail "cannot render the dsc"
   sed -e "s/@VERSION@/$version/g" -e "s/@DATE_RFC2822@/$date_rfc/g" "$deb/debian.changelog.in" >"$out/debian.changelog" ||
     fail "cannot render the Debian changelog"
-  cp -- "$deb/debian.control" "$deb/debian.rules" "$out/" || fail "cannot copy the Debian files"
+  cp -- "$deb/debian.control" "$deb/debian.copyright" "$deb/debian.rules" "$out/" || fail "cannot copy the Debian files"
   chmod 755 "$out/debian.rules"
 fi
 

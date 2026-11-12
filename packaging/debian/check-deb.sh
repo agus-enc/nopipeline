@@ -67,7 +67,7 @@ else
   src="$work/src"
   make_source
 fi
-for f in nopipeline.dsc debian.control debian.rules debian.changelog; do
+for f in nopipeline.dsc debian.control debian.copyright debian.rules debian.changelog; do
   [ -f "$src/$f" ] || { echo "check-deb: build-source.sh did not write $f" >&2; exit 1; }
 done
 cat "$src/nopipeline.dsc"
@@ -103,7 +103,7 @@ listing=$(dpkg-deb -c "$deb")
 printf '%s\n' "$listing" | grep -q ' \./usr/share/keyrings/nopipeline-archive-keyring.gpg$'
 printf '%s\n' "$listing" | grep -q ' \./usr/bin/nopipeline$'
 # The images' dpkg config skips /usr/share/doc on install, so the documents are checked in the package itself.
-for f in LICENSE LICENSE.notionhq-client LICENSE.node-diff3 README.md CHANGELOG.md; do
+for f in copyright LICENSE LICENSE.notionhq-client LICENSE.node-diff3 README.md CHANGELOG.md; do
   printf '%s\n' "$listing" | grep -Eq " \./usr/share/doc/nopipeline/$f(\.gz)?\$" || { echo "check-deb: $f is missing" >&2; exit 1; }
 done
 INNER

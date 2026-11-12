@@ -38,6 +38,12 @@
   <service name="download_url">
     <param name="protocol">https</param>
     <param name="host">github.com</param>
+    <param name="path">@REPO@/releases/latest/download/debian.copyright</param>
+    <param name="filename">debian.copyright</param>
+  </service>
+  <service name="download_url">
+    <param name="protocol">https</param>
+    <param name="host">github.com</param>
     <param name="path">@REPO@/releases/latest/download/PKGBUILD</param>
     <param name="filename">PKGBUILD</param>
   </service>

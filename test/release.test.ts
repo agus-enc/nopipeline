@@ -314,7 +314,7 @@ test("the OBS _service downloads exactly the files build-source.sh renders, from
   const { readFile } = await import("node:fs/promises");
   const xml = await readFile("packaging/obs/_service", "utf8");
   const paths = [...xml.matchAll(/<param name="path">([^<]*)<\/param>/g)].map((m) => m[1]);
-  const names = ["nopipeline.tar.gz", "nopipeline.spec", "nopipeline.dsc", "debian.control", "debian.rules", "debian.changelog", "PKGBUILD", "nopipeline.install"];
+  const names = ["nopipeline.tar.gz", "nopipeline.spec", "nopipeline.dsc", "debian.control", "debian.rules", "debian.changelog", "debian.copyright", "PKGBUILD", "nopipeline.install"];
   assert.deepEqual(paths, names.map((n) => `@REPO@/releases/latest/download/${n}`));
   assert.equal([...xml.matchAll(/<param name="host">github\.com<\/param>/g)].length, names.length);
   const meta = await readFile("packaging/obs/project-meta.xml.in", "utf8");
