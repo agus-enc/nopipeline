@@ -1,7 +1,7 @@
 // Opens a GitHub issue when the OBS repo key shipped in the latest release expires within 90 days (or OBS serves another key).
 // Run monthly by .github/workflows/key-check.yml. Needs gh (with GH_TOKEN), gpg and curl. A fetch failure exits 1 and opens no issue; no release yet (or none with the keyring asset) is a notice and exit 0.
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -31,10 +31,13 @@ export function decide(input: { shippedExpires: number; servedExpires: number; s
   if (input.shippedExpires === 0) return null;
   if (input.shippedExpires - input.now >= WARN_SECONDS) return null;
   const date = isoDate(input.shippedExpires);
+  // 0 means no expiry, which is the furthest extension there is.
   const next =
-    input.servedExpires > input.shippedExpires
-      ? `OBS already serves the extended key (valid until ${isoDate(input.servedExpires)}): tag a patch release so the packages ship it.`
-      : "OBS has not extended it yet; check the project's signing keys.";
+    input.servedExpires === 0
+      ? "OBS already serves the extended key (it no longer expires): tag a patch release so the packages ship it."
+      : input.servedExpires > input.shippedExpires
+        ? `OBS already serves the extended key (valid until ${isoDate(input.servedExpires)}): tag a patch release so the packages ship it.`
+        : "OBS has not extended it yet; check the project's signing keys.";
   return {
     title: `OBS repo key expires on ${date}`,
     body: `The OBS repo key shipped in the latest release expires on ${date}. After that, package managers refuse updates from the OBS repository.\n\n${next}\n\nProcedure: ${docs}\n`,
@@ -48,7 +51,16 @@ export function shouldCreate(openTitles: string[], title: string): boolean {
 
 /** The primary key's expiry in Unix seconds (0 for none) from a keyring file; --show-keys does not import anything. */
 export async function expiryOfKeyring(file: string): Promise<number> {
-  const { stdout } = await run("gpg", ["--batch", "--no-tty", "--show-keys", "--with-colons", file]);
+  // A private home, so the runner's own GNUPGHOME is neither read nor written.
+  return withTempDir(async (dir) => {
+    const home = join(dir, "gnupg");
+    await mkdir(home, { mode: 0o700 });
+    const { stdout } = await run("gpg", ["--batch", "--no-tty", "--homedir", home, "--show-keys", "--with-colons", file]);
+    return parseExpiry(stdout);
+  });
+}
+
+function parseExpiry(stdout: string): number {
   const pub = stdout.split("\n").find((l) => l.startsWith("pub:"));
   if (pub === undefined) throw new Error(`no key in ${ASSET}`);
   const field = pub.split(":")[6] ?? "";

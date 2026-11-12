@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmod, readFile, writeFile } from "node:fs/promises";
+import { chmod, readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { check, decide, expiryOfKeyring, shouldCreate, type Deps } from "../scripts/key-check.ts";
 import { tempDir } from "./helpers/tmp.ts";
-import { injectionProblems, secretProblems, yaml } from "./helpers/workflow-text.ts";
+import { injectionProblems, secretProblems } from "./helpers/workflow-text.ts";
 
 const DAY = 86400;
 const NOW = Date.UTC(2026, 10, 11) / 1000;
@@ -29,6 +29,13 @@ test("an extended key on OBS says to tag a patch release", () => {
   assert.doesNotMatch(issue!.body, /has not extended/);
   assert.match(issue!.body, /2026-12-11/);
   assert.match(issue!.body, /docs\/development\.md#obs-repo-key/);
+});
+
+test("a served key without an expiry counts as extended", () => {
+  const issue = decide(input({ shippedExpires: NOW + 30 * DAY, servedExpires: 0 }));
+  assert.match(issue!.body, /tag a patch release/);
+  assert.doesNotMatch(issue!.body, /has not extended/);
+  assert.doesNotMatch(issue!.body, /1970/);
 });
 
 test("a key OBS has not extended says to check the signing keys", () => {
@@ -136,6 +143,25 @@ test("expiryOfKeyring reads the primary key's expiry and does not import the key
   assert.deepEqual(await readFile(join(dir, "k.gpg")), before);
 });
 
+test("expiryOfKeyring runs gpg in a private home and leaves the caller's GNUPGHOME alone", { skip }, async (t) => {
+  const dir = await tempDir(t);
+  const home = join(dir, "gnupg");
+  spawnSync("mkdir", ["-m", "700", home]);
+  const g = (...a: string[]) => spawnSync("gpg", ["--batch", "--no-tty", "--homedir", home, ...a], { encoding: "buffer" });
+  assert.equal(g("--passphrase", "", "--pinentry-mode", "loopback", "--quick-generate-key", "t <t@example.invalid>", "ed25519", "sign", "2031-05-01").status, 0);
+  await writeFile(join(dir, "k.gpg"), g("--export").stdout);
+  const callers = join(dir, "callers-home");
+  const saved = process.env.GNUPGHOME;
+  process.env.GNUPGHOME = callers;
+  try {
+    await expiryOfKeyring(join(dir, "k.gpg"));
+  } finally {
+    if (saved === undefined) delete process.env.GNUPGHOME;
+    else process.env.GNUPGHOME = saved;
+  }
+  assert.equal(await stat(callers).then(() => true, () => false), false, "the caller's GNUPGHOME was not created");
+});
+
 /** A fake gh on PATH: logs its arguments; `release view` answers with VIEW_OUT on stdout / VIEW_ERR on stderr and exit VIEW_EXIT; everything else exits 1. */
 async function fakeGh(t: import("node:test").TestContext, view: { out?: string; err?: string; exit: number }) {
   const dir = await tempDir(t);
@@ -216,7 +242,6 @@ test("no secrets, only the job's own token, and no expression inside a script", 
   assert.deepEqual(injectionProblems(wf), []);
   assert.match(wfText, /^ {10}GH_TOKEN: \$\{\{ github\.token \}\}$/m);
   assert.doesNotMatch(wfText, /set\s+-[a-z]*x/);
-  assert.equal(yaml("a").length, 1);
 });
 
 test("every action is a pinned commit", () => {
