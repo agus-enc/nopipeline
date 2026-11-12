@@ -81,9 +81,14 @@ jobs:
           sh packaging/obs-key.sh --project "$project" "$(cat packaging/obs-signing-key.fingerprint)" "$RUNNER_TEMP/obs"
           expires=$(cat "$RUNNER_TEMP/obs/expires")
           now=$(date +%s)
-          if [ "$expires" -ne 0 ] && [ $((expires - now)) -lt $((60 * 86400)) ]; then
-            echo "::notice::The OBS repo key expires on $(date -u -d "@$expires" +%Y-%m-%d) (within 60 days): extend it in OBS, then release again."
-          fi
+          case $expires in
+            ''|*[!0-9]*) echo "::warning::Could not read the OBS key expiry from the expires file; skipping the expiry notice." ;;
+            *)
+              if [ "$expires" -ne 0 ] && [ $((expires - now)) -lt $((60 * 86400)) ]; then
+                echo "::notice::The OBS repo key expires on $(date -u -d "@$expires" +%Y-%m-%d) (within 60 days): extend it in OBS, then release again."
+              fi
+              ;;
+          esac
 
       # build-source.sh verifies the tag (annotated, SSH-signed by the key below, name and package.json version agree)
       # and refuses anything else, so nothing after this step runs for an unverified tag.

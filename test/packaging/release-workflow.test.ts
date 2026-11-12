@@ -152,3 +152,35 @@ test("the signers variable is compared with the tag's .release-signers and fills
   assert.match(text, /::error::[^\n]*RELEASE_SIGNERS/);
   assert.match(text, /@RELEASE_SIGNERS@/);
 });
+
+test("the expiry notice step checks that expires is digits before doing arithmetic", async () => {
+  const start = lines.findIndex((l) => l.includes('expires=$(cat "$RUNNER_TEMP/obs/expires")'));
+  assert.notEqual(start, -1);
+  const end = lines.findIndex((l, i) => i > start && /^\s+esac$/.test(l));
+  assert.notEqual(end, -1);
+  const snippet = lines.slice(start, end + 1).map((l) => l.replace(/^ {10}/, "")).join("\n");
+  const { spawnSync } = await import("node:child_process");
+  const { mkdtemp, mkdir, writeFile, rm } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const dir = await mkdtemp(join(tmpdir(), "nopipeline-wf-"));
+  try {
+    await mkdir(join(dir, "obs"));
+    const runWith = async (content: string) => {
+      await writeFile(join(dir, "obs", "expires"), content);
+      return spawnSync("/bin/sh", ["-e", "-c", snippet], { encoding: "utf8", env: { ...process.env, RUNNER_TEMP: dir } });
+    };
+    for (const bad of ["soon\n", "\n", "12x\n", "-5\n"]) {
+      const r = await runWith(bad);
+      assert.equal(r.status, 0, `${JSON.stringify(bad)}: ${r.stderr}`);
+      assert.match(r.stdout, /^::warning::.*expiry/m, JSON.stringify(bad));
+      assert.equal(r.stderr, "", JSON.stringify(bad));
+    }
+    const soon = await runWith(`${Math.floor(Date.now() / 1000) + 86400}\n`);
+    assert.match(soon.stdout, /^::notice::The OBS repo key expires on /m);
+    assert.equal((await runWith("0\n")).stdout, "");
+    assert.equal((await runWith(`${Math.floor(Date.now() / 1000) + 400 * 86400}\n`)).stdout, "");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
