@@ -93,6 +93,23 @@ pkg_version=$(cd "$tree" && node -p "require('./package.json').version") || fail
 installs=$(cd "$tree" && node -p "Object.keys(require('./package-lock.json').packages ?? {}).filter((k) => k !== '').length") ||
   fail "cannot read package-lock.json"
 
+# Checked now, before the slow npm steps, so a wrong keys folder fails fast.
+keys=${NOPIPELINE_REPO_KEYS:-}
+key_names="nopipeline-archive-keyring.gpg nopipeline.gpg nopipeline-trusted"
+if [ -n "$keys" ]; then
+  [ -d "$keys" ] && [ ! -L "$keys" ] || fail "NOPIPELINE_REPO_KEYS is not a folder: $keys"
+  for entry in "$keys"/* "$keys"/.[!.]* "$keys"/..?*; do
+    [ -e "$entry" ] || [ -L "$entry" ] || continue
+    case " $key_names " in
+      *" ${entry##*/} "*) [ -f "$entry" ] && [ ! -L "$entry" ] || fail "${entry##*/} in the keys folder is not a regular file" ;;
+      *) fail "unexpected entry in the keys folder: ${entry##*/}" ;;
+    esac
+  done
+  for name in $key_names; do
+    [ -f "$keys/$name" ] || fail "the keys folder has no $name"
+  done
+fi
+
 if [ "${NOPIPELINE_SKIP_AUDIT:-}" = 1 ] && [ "$installs" != 0 ]; then
   fail "NOPIPELINE_SKIP_AUDIT is only allowed for a tree with no dependencies"
 fi
@@ -115,20 +132,7 @@ mkdir -p "$tree/node_modules"
 printf '{ "version": "%s", "commit": "%s" }\n' "$version" "$commit" >"$tree/version.json"
 
 if [ -n "${NOPIPELINE_REPO_KEYS:-}" ]; then
-  keys=$NOPIPELINE_REPO_KEYS
-  [ -d "$keys" ] && [ ! -L "$keys" ] || fail "NOPIPELINE_REPO_KEYS is not a folder: $keys"
-  key_names="nopipeline-archive-keyring.gpg nopipeline.gpg nopipeline-trusted"
-  for entry in "$keys"/* "$keys"/.[!.]* "$keys"/..?*; do
-    [ -e "$entry" ] || [ -L "$entry" ] || continue
-    case " $key_names " in
-      *" ${entry##*/} "*) [ -f "$entry" ] && [ ! -L "$entry" ] || fail "${entry##*/} in the keys folder is not a regular file" ;;
-      *) fail "unexpected entry in the keys folder: ${entry##*/}" ;;
-    esac
-  done
-  for name in $key_names; do
-    [ -f "$keys/$name" ] || fail "the keys folder has no $name"
-  done
-  mkdir "$tree/keys"
+  mkdir "$tree/keys" 2>/dev/null || fail "the tagged tree already has a keys folder"
   for name in $key_names; do
     cp -- "$keys/$name" "$tree/keys/$name" || fail "cannot copy $name"
   done

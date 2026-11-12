@@ -55,7 +55,7 @@ async function build(
   const result = join(await tempDir(t), "result");
   const args = [url, result, ...(opts.tag ? [opts.tag] : [])];
   const extra = { ...(opts.gnupg ? { GNUPGHOME: gnupgHome } : {}), ...(opts.envFor ? await opts.envFor(await tempDir(t)) : {}) };
-  const run = spawnSync(opts.shell ?? "/bin/sh", [script, ...args], { encoding: "utf8", env: { ...process.env, NOPIPELINE_SKIP_AUDIT: "1", ...opts.env, ...extra } });
+  const run = spawnSync(opts.shell ?? "/bin/sh", [script, ...args], { encoding: "utf8", env: { ...process.env, NOPIPELINE_SKIP_AUDIT: "1", NOPIPELINE_REPO_KEYS: "", ...opts.env, ...extra } });
   const listing = await readdir(result).catch(() => null);
   return { run, result, listing };
 }
@@ -205,6 +205,37 @@ test("a symlink or a subfolder in the keys folder stops the build", { skip }, as
   assert.notEqual(b.run.status, 0);
   assert.match(b.run.stderr, /^build-source: /m);
   assert.equal(b.listing, null);
+});
+
+test("an empty keys folder or a path that does not exist stops the build", { skip }, async (t) => {
+  const empty = join(await tempDir(t), "keys");
+  await mkdir(empty);
+  const a = await build(t, [{ name: "v0.2.0", sign: "release" }], { env: { NOPIPELINE_REPO_KEYS: empty } });
+  assert.notEqual(a.run.status, 0);
+  assert.match(a.run.stderr, /^build-source: the keys folder has no /m);
+  assert.equal(a.listing, null);
+  const b = await build(t, [{ name: "v0.2.0", sign: "release" }], { env: { NOPIPELINE_REPO_KEYS: join(empty, "nope") } });
+  assert.notEqual(b.run.status, 0);
+  assert.match(b.run.stderr, /^build-source: NOPIPELINE_REPO_KEYS is not a folder/m);
+  assert.equal(b.listing, null);
+});
+
+test("the keys folder is checked before npm ci runs", { skip }, async (t) => {
+  const files = { ...tree("0.2.0"), "package.json": JSON.stringify({ name: "nopipeline", version: "0.2.0", dependencies: { left: "1.0.0" } }) };
+  const { run, listing } = await build(t, [{ name: "v0.2.0", sign: "release" }], { files, env: { NOPIPELINE_REPO_KEYS: join(await tempDir(t), "nope") } });
+  assert.notEqual(run.status, 0);
+  assert.match(run.stderr, /^build-source: NOPIPELINE_REPO_KEYS is not a folder/m);
+  assert.doesNotMatch(run.stderr, /npm ci failed/);
+  assert.equal(listing, null);
+});
+
+test("a tagged tree that already has a keys folder stops the build with a clear message", { skip }, async (t) => {
+  const keys = await keysDir(t);
+  const files = { ...tree("0.2.0"), "keys/other.txt": "x\n" };
+  const { run, listing } = await build(t, [{ name: "v0.2.0", sign: "release" }], { files, env: { NOPIPELINE_REPO_KEYS: keys } });
+  assert.notEqual(run.status, 0);
+  assert.match(run.stderr, /^build-source: the tagged tree already has a keys folder/m);
+  assert.equal(listing, null);
 });
 
 test("the build records the tag's commit", { skip }, async (t) => {
