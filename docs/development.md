@@ -131,20 +131,20 @@ The Arch repository's database is named `<project with ':' replaced by '_'>_<rep
 Done once by the owner, who types every credential. Nothing here is done by scripts or by Claude.
 
 1. **openSUSE account** at <https://build.opensuse.org/> (sign up there). The username is public in the repository URLs, so use a non-personal one.
-2. **OBS project.** Take `packaging/obs/project-meta.xml.in`, replace `@PROJECT@` with the project name (for example `home:<user>:nopipeline`; a home project is `home:<user>:…`), and create the project from it: web interface (Create project, then edit the meta as XML) or, with `osc` (`dnf install osc`; `osc` asks for your login the first time):
+2. **OBS project.** Take `packaging/obs/project-meta.xml.in`, replace `@PROJECT@` with the project name (the examples below use the real `home:chipp:nopipeline`; a fork uses its own OBS user and GitHub `owner/repo` instead, and a home project is always `home:<your OBS user>:…`), and create the project from it: web interface (Create project, then edit the meta as XML) or, with `osc` (`dnf install osc`; `osc` asks for your login the first time):
 
    ```bash
-   sed 's|@PROJECT@|home:<user>:nopipeline|' packaging/obs/project-meta.xml.in | osc meta prj home:<user>:nopipeline -F -
+   sed 's|@PROJECT@|home:chipp:nopipeline|' packaging/obs/project-meta.xml.in | osc meta prj home:chipp:nopipeline -F -
    ```
 
    Then check the `<person>` element: `project-meta.xml.in` has none, and OBS may add you as maintainer on its own. Make sure your user is maintainer and has the build failure mail turned on (above).
 3. **OBS package.** Create it from `packaging/obs/package-meta.xml`, then upload `_service` with `@REPO@` filled in (`owner/repo` of the GitHub repository):
 
    ```bash
-   osc meta pkg home:<user>:nopipeline nopipeline -F packaging/obs/package-meta.xml
-   osc co home:<user>:nopipeline nopipeline
-   sed 's|@REPO@|agus-enc/nopipeline|' packaging/obs/_service > home:<user>:nopipeline/nopipeline/_service
-   cd home:<user>:nopipeline/nopipeline && osc add _service && osc ci -m "source service"
+   osc meta pkg home:chipp:nopipeline nopipeline -F packaging/obs/package-meta.xml
+   osc co home:chipp:nopipeline nopipeline
+   sed 's|@REPO@|agus-enc/nopipeline|' packaging/obs/_service > home:chipp:nopipeline/nopipeline/_service
+   cd home:chipp:nopipeline/nopipeline && osc add _service && osc ci -m "source service"
    ```
 
 4. **Package-scoped token.** `osc token --create --operation runservice <project> <package>` creates a token for one package that can only run its source services ([`osc token`](https://github.com/openSUSE/osc/blob/master/osc/commandline.py) usage: `osc token --create --operation <OPERATION> [<PROJECT> <PACKAGE>]`, operations `runservice, branch, release, rebuild, workflow`; [OBS tokens](https://openbuildservice.org/help/manuals/obs-user-guide/cha-obs-authorization-token) recommend binding a token to a package). The command prints the token string once. Do not paste it anywhere but step 6.
@@ -168,14 +168,14 @@ Done once by the owner, who types every credential. Nothing here is done by scri
 8. **Fill the placeholders and commit:** `packaging/obs/project` (the project name) and `packaging/obs-signing-key.fingerprint` (the OBS signing key's primary fingerprint). The real project `home:chipp:nopipeline` is expected to serve the same key as the test sub-project (the `home:chipp` key, RSA 4096; the pinned fingerprint is that key's), so after creating it, run this and check the output equals the pinned fingerprint. Get the fingerprint from the key a project serves:
 
    ```bash
-   curl -fsSL "https://build.opensuse.org/projects/home:<user>:nopipeline/signing_keys/download?kind=gpg" | gpg --show-keys --with-colons | awk -F: '/^fpr:/ {print $10; exit}'
+   curl -fsSL "https://build.opensuse.org/projects/home:chipp:nopipeline/signing_keys/download?kind=gpg" | gpg --show-keys --with-colons | awk -F: '/^fpr:/ {print $10; exit}'
    ```
 
-   and compare it with the signing key page of the project on build.opensuse.org before you commit it. Also replace every `<user>` in the README's install commands (`home:<user>`, `home:/<user>:/` in URLs and `home_<user>_` in the pacman section) with the real OBS project (done for `chipp`); `node scripts/release.ts` reports a problem while `<user>` is still anywhere in `README.md`.
+   and compare it with the signing key page of the project on build.opensuse.org before you commit it. The README's install commands already use the real project. A fork must put its own OBS project in them; `node scripts/release.ts` reports a problem while a `<user>` placeholder (`home:<user>`, `home:/<user>:/` in URLs, `home_<user>_` in the pacman section) is anywhere in `README.md`, which guards a fork that copies an old README.
 
 9. **Immutable releases.** In the repository settings, enable "Immutable releases" ([docs](https://docs.github.com/en/code-security/supply-chain-security/understanding-your-software-supply-chain/immutable-releases)). Once a release is published, its assets and tag cannot be changed or deleted, and the release gets an attestation. Do this before the first real release. Confirmed in the rehearsal on 2026-11-12: `gh release create` with files (draft, upload, publish) works with immutable releases on, and re-running a finished release run leaves the release untouched and only re-triggers OBS.
 
-`node scripts/release.ts` refuses to print the release commands while the three placeholders (the project file, the fingerprint file and the README's `<user>`) are still there.
+`node scripts/release.ts` refuses to print the release commands while `packaging/obs/project` or `packaging/obs-signing-key.fingerprint` still holds its placeholder (or the README still has a `<user>`, see step 8).
 
 ### Rehearsal results (2026-11-12)
 
@@ -191,7 +191,7 @@ OBS signs the repositories with a key of the project, which expires about two ye
 
 **The pin.** `packaging/obs-signing-key.fingerprint` holds the key's primary fingerprint. `packaging/obs-key.sh` downloads the key OBS serves, accepts it only if that fingerprint is its primary key (exit status 10 if the download holds no such key, 1 for any other failure; not 2, because `sh` and `awk` exit 2 on their own errors), and keeps only that primary key with its user ID and self-signatures. An OBS extension keeps the same fingerprint, so it needs no commit.
 
-**At release.** The workflow runs `obs-key.sh` and bakes the key into the packages: `/usr/share/keyrings/nopipeline-archive-keyring.gpg` (deb; dpkg replaces it on upgrade, and the user's `.sources` file points at it) and `/usr/share/pacman/keyrings/nopipeline.gpg` and `nopipeline-trusted` (Arch; the install script runs `pacman-key --populate nopipeline`). A mismatch or a download failure fails the release before anything is published. The rpm ships no key file: the `.repo` file from OBS points at the key on OBS (`gpgkey=…/repodata/repomd.xml.key`).
+**At release.** The workflow runs `obs-key.sh` and bakes the key into the packages: `/usr/share/keyrings/nopipeline-archive-keyring.gpg` (deb; dpkg replaces it on upgrade, and the user's `.sources` file points at it) and `/usr/share/pacman/keyrings/nopipeline.gpg` and `nopipeline-trusted` (Arch; the install script runs `pacman-key --populate nopipeline`). A mismatch, a download failure, a revoked key or an expired key fails the release before anything is published. The rpm ships no key file: the `.repo` file from OBS points at the key on OBS (`gpgkey=…/repodata/repomd.xml.key`).
 
 **The obligation, about every two years.** Make at least one release between OBS extending the key and the old expiry, so the packages carry the extended key. What I could check: darktable's OBS key (created 2017-12-26) was re-signed on 2026-10-01 to expire in 2028-12 (about 2 years 2 months after the extension), and the key of `home:manuelschneid3r` (created 2017-10-27) on 2024-12-02 to expire in 2027-02 (read with `gpg --list-packets` on the keys served by `https://download.opensuse.org/repositories/graphics:/darktable/xUbuntu_26.04/Release.key` and the project's `signing_keys/download` URL). I could not find how long before the old expiry OBS extends, so this is **not confirmed**; the monthly check below catches the case where it has not. (See also the [OBS mailing list](https://lists.opensuse.org/archives/list/buildservice@lists.opensuse.org/thread/Z6AIHSMZDULWIOUA253QLAAGNT64G3GU) and a [2026 report](https://discuss.pixls.us/t/obs-gpg-signing-key-expired/60805) of an expired key.) `node scripts/release.ts` prints the expiry date of the key OBS serves and warns when it is within 180 days. The workflow only prints a notice when it is within 60 days; it never blocks a release.
 
@@ -222,7 +222,7 @@ It opens nothing if an open issue with the same title exists. If there is no rel
 - runs `npm ci --omit=dev --ignore-scripts` and `npm audit signatures`;
 - writes `version.json` (version and commit) into the tarball, and `nopipeline.tar.gz`, `version` (one line) and `nopipeline.spec` (from `packaging/fedora/nopipeline.spec.in`, with the version, date and one `Provides: bundled(nodejs-…)` line per shipped dependency). If `NOPIPELINE_REPO_KEYS=<dir>` is set, the three repo key files in it are added to the tarball under `keys/` (any other entry fails the build). The rpm needs no Node to build and has no `%check`; the container checks run the installed package.
 - when the tag has `packaging/debian/`, also writes the Debian recipe for OBS: `nopipeline.dsc` (from `nopipeline.dsc.in`, with `Version: X.Y.Z-1` and the tarball's sha256, md5 and size, computed with `node`), `debian.control`, `debian.copyright` (installed as `/usr/share/doc/nopipeline/copyright`), `debian.rules` and `debian.changelog` (from `debian.changelog.in`, dated with `date -R`). OBS's [debtransform](https://github.com/openSUSE/obs-build/blob/master/debtransform) puts each `debian.<name>` file at `debian/<name>` on top of the tarball named by `Debtransform-Tar:`. Old tags without that folder build as before.
-- when the tag has `packaging/arch/`, also writes the Arch recipe for OBS: `PKGBUILD` (from `PKGBUILD.in`, with the version and the tarball's sha256) and `nopipeline.install`, which runs `pacman-key --populate nopipeline` on install and upgrade (guarded: if pacman's keyring is not initialised it prints a hint instead of failing). The package ships `keys/nopipeline.gpg` and `keys/nopipeline-trusted` in `/usr/share/pacman/keyrings/`; if `--populate` fails the scriptlet prints a hint and the install goes on; removing the package does not untrust the key (it stays locally signed with owner trust 4; drop it with `pacman-key --delete <fingerprint>`, the fingerprint is in `packaging/obs-signing-key.fingerprint`); [pacman-key(8)](https://man.archlinux.org/man/pacman-key.8) says `--populate` reads `<name>.gpg` and the optional `<name>-trusted` (gpg ownertrust format) and `<name>-revoked` there.
+- when the tag has `packaging/arch/`, also writes the Arch recipe for OBS: `PKGBUILD` (from `PKGBUILD.in`, with the version and the tarball's sha256) and `nopipeline.install`, which runs `pacman-key --populate nopipeline` on install and upgrade (if `pacman-key --populate` fails, for example because pacman's keyring is not initialised, it prints a hint and the install goes on). The package ships `keys/nopipeline.gpg` and `keys/nopipeline-trusted` in `/usr/share/pacman/keyrings/`; if `--populate` fails the scriptlet prints a hint and the install goes on; removing the package does not untrust the key (it stays locally signed with owner trust 4; drop it with `pacman-key --delete <fingerprint>`, the fingerprint is in `packaging/obs-signing-key.fingerprint`); [pacman-key(8)](https://man.archlinux.org/man/pacman-key.8) says `--populate` reads `<name>.gpg` and the optional `<name>-trusted` (gpg ownertrust format) and `<name>-revoked` there.
 
 It calls these tools: `git`, `ssh-keygen` (through git's SSH signature check), `node`, `npm`, `tar`, `sed`, `grep`, `head`, `tr`, `date`, `env`, `mktemp`, `realpath`, and `sh`, `rm`, `mkdir`, `cp` and `mv`. It trusts the `PATH` it runs with, which is fine on a GitHub Actions runner; do not run it with a `PATH` you do not control.
 
