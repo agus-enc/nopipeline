@@ -147,6 +147,16 @@ Done once by the owner, who types every credential. Nothing here is done by scri
    cd home:chipp:nopipeline/nopipeline && osc add _service && osc ci -m "source service"
    ```
 
+   **When `packaging/obs/_service` changes** (for example a new asset such as `debian.copyright` was added), the copy stored on OBS does not update itself: push it again before tagging the next release, or that release's OBS build will lack the new file. In a scratch folder:
+
+   ```bash
+   cd "$(mktemp -d)" && osc co home:chipp:nopipeline nopipeline
+   sed 's|@REPO@|agus-enc/nopipeline|' <path to this repository>/packaging/obs/_service > home:chipp:nopipeline/nopipeline/_service
+   cd home:chipp:nopipeline/nopipeline && osc ci -m "update source service"
+   ```
+
+   The `debian.copyright` entry was added after the first upload, so the real project needs this once before the next release.
+
 4. **Package-scoped token.** `osc token --create --operation runservice <project> <package>` creates a token for one package that can only run its source services ([`osc token`](https://github.com/openSUSE/osc/blob/master/osc/commandline.py) usage: `osc token --create --operation <OPERATION> [<PROJECT> <PACKAGE>]`, operations `runservice, branch, release, rebuild, workflow`; [OBS tokens](https://openbuildservice.org/help/manuals/obs-user-guide/cha-obs-authorization-token) recommend binding a token to a package). The command prints the token string once. Do not paste it anywhere but step 6.
 5. **GitHub `release` environment.** In the repository: Settings, Environments, New environment `release`; under "Deployment branches and tags" choose "Selected branches and tags" and add a **tag** rule `v*.*.*`. Or with the API ([deployment tag policies](https://docs.github.com/en/rest/deployments/branch-policies)):
 

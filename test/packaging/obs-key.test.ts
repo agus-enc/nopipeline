@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -282,11 +282,15 @@ test("a TERM signal removes the temporary folder", { skip }, async (t) => {
   // The fake curl records where the script downloads to (inside its temporary folder), then waits.
   await writeFile(join(bin, "curl"), `#!/bin/sh\nwhile [ "$1" != -o ]; do shift; done\nprintf '%s\\n' "$2" > '${rec}'\nsleep 2\n`, { mode: 0o755 });
   const out = join(await tempDir(t), "out");
-  const r = spawnSync("/bin/sh", [script, "https://example.invalid/k", "A".repeat(40), out], { encoding: "utf8", timeout: 700, killSignal: "SIGTERM", env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } });
+  const child = spawn("/bin/sh", [script, "https://example.invalid/k", "A".repeat(40), out], { stdio: "ignore", env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } });
+  const closed = new Promise<number | null>((resolve) => child.on("close", (code) => resolve(code)));
+  for (let i = 0; i < 100 && !(await stat(rec).then(() => true, () => false)); i++) await new Promise((r) => setTimeout(r, 50));
+  child.kill("SIGTERM");
+  const status = await closed;
   const download = (await readFile(rec, "utf8")).trim();
   assert.match(download, /\/download$/);
   assert.equal(await stat(join(download, "..")).then(() => true, () => false), false, "the temporary folder is gone");
-  assert.notEqual(r.status, 0);
+  assert.notEqual(status, 0);
 });
 
 test("the committed fingerprint file is 40 hex characters", async () => {
