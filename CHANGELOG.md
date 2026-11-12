@@ -2,7 +2,7 @@
 
 Newest first. Each section lists what a user notices.
 
-## 0.3.0 — 2026-11-11
+## 0.3.0 — 2026-11-12
 
 - Packages for Debian, Ubuntu and Arch, from the openSUSE Build Service (OBS), updated with the system's upgrade. Debian and Ubuntu need Node.js 22.22 or newer from NodeSource.
 - Fedora moves to OBS too. Copr keeps building for now; if you use Copr, add the OBS repository and run `sudo dnf copr disable chipp/nopipeline` (see the README).
