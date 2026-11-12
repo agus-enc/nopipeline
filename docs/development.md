@@ -147,7 +147,7 @@ Done once by the owner, who types every credential. Nothing here is done by scri
    cd home:chipp:nopipeline/nopipeline && osc add _service && osc ci -m "source service"
    ```
 
-   **When `packaging/obs/_service` changes** (for example a new asset such as `debian.copyright` was added), the copy stored on OBS does not update itself: push it again before tagging the next release, or that release's OBS build will lack the new file. In a scratch folder:
+   **When `packaging/obs/_service` changes** (for example a new asset such as `debian.copyright` was added), the copy stored on OBS does not update itself. Push it **after** the first release whose assets include the new file is published, not before: `download_url` fails with a 404 for a file the latest release doesn't have, and then OBS marks every target broken (this happened on 2026-11-12). So: tag and push, wait for the release workflow to finish (its OBS build uses the old `_service` and simply lacks the new file), then upload the new `_service`; OBS reruns the service and rebuilds with the new file. In a scratch folder:
 
    ```bash
    cd "$(mktemp -d)" && osc co home:chipp:nopipeline nopipeline
@@ -155,7 +155,7 @@ Done once by the owner, who types every credential. Nothing here is done by scri
    cd home:chipp:nopipeline/nopipeline && osc ci -m "update source service"
    ```
 
-   The `debian.copyright` entry was added after the first upload, so the real project needs this once before the next release.
+   The `debian.copyright` entry was added after 0.3.0, so the real project needs this once, right after the next release is published.
 
 4. **Package-scoped token.** `osc token --create --operation runservice <project> <package>` creates a token for one package that can only run its source services ([`osc token`](https://github.com/openSUSE/osc/blob/master/osc/commandline.py) usage: `osc token --create --operation <OPERATION> [<PROJECT> <PACKAGE>]`, operations `runservice, branch, release, rebuild, workflow`; [OBS tokens](https://openbuildservice.org/help/manuals/obs-user-guide/cha-obs-authorization-token) recommend binding a token to a package). The command prints the token string once. Do not paste it anywhere but step 6.
 5. **GitHub `release` environment.** In the repository: Settings, Environments, New environment `release`; under "Deployment branches and tags" choose "Selected branches and tags" and add a **tag** rule `v*.*.*`. Or with the API ([deployment tag policies](https://docs.github.com/en/rest/deployments/branch-policies)):
